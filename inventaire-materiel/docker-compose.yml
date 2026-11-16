@@ -1,0 +1,45 @@
+# Application Parc IT dans Docker : une base PostgreSQL + le serveur de l'application.
+#   docker compose up -d --build     démarrer (ou mettre à jour)
+#   docker compose ps                état
+#   docker compose logs -f app       journal du serveur
+#   docker compose down              arrêter (les données restent dans le volume « donnees »)
+# Le mot de passe de la base est lu dans le fichier .env à côté de ce fichier (variable PGPASSWORD).
+
+name: parc-it
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: inventaire
+      POSTGRES_USER: inventaire_app
+      POSTGRES_PASSWORD: ${PGPASSWORD:?Renseignez PGPASSWORD dans le fichier .env}
+    volumes:
+      - donnees:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventaire_app -d inventaire"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Aucun port publié : la base n'est joignable que par l'application.
+
+  app:
+    build: .
+    image: parc-it-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: inventaire
+      PGUSER: inventaire_app
+      PGPASSWORD: ${PGPASSWORD}
+      PORT: "3001"
+    ports:
+      - "${PORT_APP:-3001}:3001"
+
+volumes:
+  donnees:

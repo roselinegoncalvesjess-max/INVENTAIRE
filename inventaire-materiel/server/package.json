@@ -1,0 +1,19 @@
+{
+  "name": "inventaire-server",
+  "version": "1.0.0",
+  "description": "API REST de l'inventaire du matériel informatique (Node.js + PostgreSQL)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch-path=src --watch-path=.env src/index.js",
+    "import": "node src/importer-excel.js",
+    "creer-admin": "node src/creer-admin.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.1",
+    "pg": "^8.13.0"
+  }
+}
