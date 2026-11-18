@@ -113,3 +113,74 @@ CREATE INDEX IF NOT EXISTS idx_sessions_utilisateur ON sessions(utilisateur_id);
 -- Traçabilité : qui a saisi quoi
 ALTER TABLE releves_inventaire ADD COLUMN IF NOT EXISTS utilisateur_id INTEGER REFERENCES utilisateurs(id) ON DELETE SET NULL;
 ALTER TABLE decharges          ADD COLUMN IF NOT EXISTS cree_par       VARCHAR(150);
+
+-- ---------- Détenteurs successifs (réattributions) ----------
+-- Une ligne par période de détention ; « en_cours » = détenteur actuel (au plus une par équipement).
+-- detenteur NULL = appareil rendu, en stock.
+CREATE TABLE IF NOT EXISTS attributions (
+    id              SERIAL PRIMARY KEY,
+    equipement_id   INTEGER      NOT NULL REFERENCES equipements(id) ON DELETE CASCADE,
+    detenteur       VARCHAR(150),
+    direction       VARCHAR(200),
+    site            VARCHAR(120),
+    emplacement     VARCHAR(150),
+    du              DATE,
+    au              DATE,
+    en_cours        BOOLEAN      NOT NULL DEFAULT true,
+    motif           VARCHAR(80),
+    commentaire     TEXT,
+    origine         VARCHAR(20)  NOT NULL DEFAULT 'saisie',   -- import | saisie | inventaire
+    saisi_par       VARCHAR(150),
+    utilisateur_id  INTEGER      REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_attrib_equip ON attributions(equipement_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_attrib_en_cours ON attributions(equipement_id) WHERE en_cours;
+
+-- Reprise du registre (une seule fois par équipement) : l'« Utilisateur » de l'Excel devient la
+-- première attribution ; un « Nouvel utilisateur » (contenant des lettres) clôt celle-ci et devient le détenteur actuel.
+WITH cand AS (
+    SELECT e.*, (COALESCE(e.nouvel_utilisateur, '') ~ '[[:alpha:]]') AS reattribue
+      FROM equipements e
+     WHERE NOT EXISTS (SELECT 1 FROM attributions a WHERE a.equipement_id = e.id)
+       AND (COALESCE(btrim(e.utilisateur), '') <> '' OR COALESCE(e.nouvel_utilisateur, '') ~ '[[:alpha:]]')
+), ajout AS (
+    -- Un seul INSERT trié : l'ancien détenteur reçoit un identifiant plus petit que le nouveau (ordre chronologique)
+    INSERT INTO attributions (equipement_id, detenteur, direction, site, emplacement, du, au, en_cours, origine, motif)
+    SELECT equipement_id, detenteur, direction, site, emplacement, du, au, en_cours, 'import', motif
+      FROM (
+        SELECT id AS equipement_id, 1 AS rang, btrim(utilisateur) AS detenteur, direction, site, emplacement,
+               date_debut AS du, CASE WHEN reattribue THEN date_nouvelle_attribution END AS au,
+               NOT reattribue AS en_cours, 'Fichier Excel' AS motif
+          FROM cand WHERE COALESCE(btrim(utilisateur), '') <> ''
+        UNION ALL
+        SELECT id, 2, btrim(nouvel_utilisateur), direction, site, emplacement,
+               date_nouvelle_attribution, NULL, true, 'Fichier Excel (nouvel utilisateur)'
+          FROM cand WHERE reattribue
+      ) t
+     ORDER BY equipement_id, rang
+)
+UPDATE equipements e SET utilisateur = btrim(c.nouvel_utilisateur)
+  FROM cand c WHERE e.id = c.id AND c.reattribue;
+
+-- ---------- Bénéficiaires : personnel, services NPSP, structures sanitaires ----------
+-- Pyramide sanitaire : région → district → site (centre de santé)
+CREATE TABLE IF NOT EXISTS structures_sanitaires (
+    id           SERIAL PRIMARY KEY,
+    niveau       VARCHAR(10)  NOT NULL CHECK (niveau IN ('region', 'district', 'site')),
+    nom          VARCHAR(150) NOT NULL,
+    parent_id    INTEGER      REFERENCES structures_sanitaires(id) ON DELETE SET NULL,
+    responsable  VARCHAR(150),
+    telephone    VARCHAR(40),
+    cree_le      TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_structure_nom ON structures_sanitaires(niveau, upper(nom));
+
+-- Type de bénéficiaire : personnel | service | site | district | region | non_affecte
+ALTER TABLE equipements  ADD COLUMN IF NOT EXISTS type_beneficiaire VARCHAR(20);
+ALTER TABLE equipements  ADD COLUMN IF NOT EXISTS structure_id      INTEGER REFERENCES structures_sanitaires(id) ON DELETE SET NULL;
+ALTER TABLE equipements  ADD COLUMN IF NOT EXISTS classement_valide BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE equipements  ADD COLUMN IF NOT EXISTS classement_raison TEXT;
+ALTER TABLE attributions ADD COLUMN IF NOT EXISTS type_beneficiaire VARCHAR(20);
+ALTER TABLE attributions ADD COLUMN IF NOT EXISTS structure_id      INTEGER REFERENCES structures_sanitaires(id) ON DELETE SET NULL;
+ALTER TABLE attributions ADD COLUMN IF NOT EXISTS recu_par          VARCHAR(150);   -- personne qui reçoit pour une structure

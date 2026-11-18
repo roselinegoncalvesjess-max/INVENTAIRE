@@ -39,7 +39,12 @@ export const apiEquipements = {
   releves: id => requete("GET", `${EQ}/${id}/releves`),
   tousReleves: () => requete("GET", `${EQ}/releves`),
   inventorier: (id, data) => requete("PUT", `${EQ}/${id}/inventaire`, data),
+  redater: (releveId, date) => requete("PUT", `${EQ}/releves/${releveId}`, { date }),
+  redaterLot: (de, vers, tous) => requete("POST", `${EQ}/releves/redater`, { de, vers, tous }),
   ajouter: data => requete("POST", EQ, data),
+  attributions: id => requete("GET", `${EQ}/${id}/attributions`),
+  toutesAttributions: () => requete("GET", `${EQ}/attributions`),
+  reattribuer: (id, data) => requete("POST", `${EQ}/${id}/attributions`, data),
   urlExport: `${EQ}/export`
 };
 
@@ -61,4 +66,25 @@ export const apiUtilisateurs = {
   reinitialiser: id => requete("POST", `/api/utilisateurs/${id}/reinitialiser`)
 };
 
+export const MOTIFS_ATTRIBUTION = [
+  "Départ de l'utilisateur", "Mutation / changement de service", "Remplacement de matériel",
+  "Nouvel arrivant", "Prêt temporaire", "Retour en stock", "Correction du registre", "Autre"
+];
+export const RETOUR_STOCK = "Retour en stock";
+
 export const ROLES = { admin: "Administrateur", agent: "Agent d’inventaire", lecteur: "Lecture seule" };
+
+// Classement par type de bénéficiaire, noms en double
+export const apiClassement = {
+  classer: (ids, type, structureId) => requete("PUT", "/api/classement", { ids, type, structureId }),
+  doublons: () => requete("GET", "/api/classement/doublons"),
+  fusionner: (noms, nom) => requete("POST", "/api/classement/fusionner", { noms, nom })
+};
+
+// Référentiel des structures sanitaires (régions → districts → sites)
+export const apiStructures = {
+  lister: () => requete("GET", "/api/structures"),
+  creer: data => requete("POST", "/api/structures", data),
+  modifier: (id, data) => requete("PUT", `/api/structures/${id}`, data),
+  supprimer: id => requete("DELETE", `/api/structures/${id}`)
+};

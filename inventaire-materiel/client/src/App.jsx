@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, apiAuth, apiEquipements, quandDeconnecte, ROLES } from "./api.js";
-import { aplatir, norm } from "./utils.js";
+import { aplatir, imeiOk, norm } from "./utils.js";
 import { codeEquipement } from "./components/Etiquettes.jsx";
 import Icone from "./components/Icone.jsx";
 import TableauDeBord from "./components/TableauDeBord.jsx";
@@ -14,6 +14,7 @@ import FormulaireDecharge from "./components/FormulaireDecharge.jsx";
 import FicheDecharge from "./components/FicheDecharge.jsx";
 import Connexion, { ChangerMotDePasse } from "./components/Connexion.jsx";
 import Utilisateurs from "./components/Utilisateurs.jsx";
+import Classement from "./components/Classement.jsx";
 
 // Menu latéral : sections et pages
 const MENU = [
@@ -21,7 +22,8 @@ const MENU = [
   { titre: "Parc & inventaire", pages: [
     ["equipements", "Équipements", "equipement"],
     ["inventaire", "Inventaire physique", "inventaire"],
-    ["historique", "Historique", "historique"]
+    ["historique", "Historique", "historique"],
+    ["classement", "À classer", "utilisateur"]
   ] },
   { titre: "Remises de matériel", pages: [
     ["decharges", "Décharges", "decharge"],
@@ -106,12 +108,30 @@ function Application({ utilisateur, setUtilisateur }) {
 
   const ouvrirFormulaire = d => { setEnEdition(d || null); setFicheId(null); aller("saisie"); };
   const enregistrerDecharge = async data => {
-    const saved = enEdition ? await api.modifier(enEdition.id, data) : await api.creer(data);
-    setToast(enEdition ? "Décharge modifiée" : `Décharge ${saved.numero} enregistrée`);
+    const saved = enEdition?.id ? await api.modifier(enEdition.id, data) : await api.creer(data);
+    setToast(enEdition?.id ? "Décharge modifiée" : `Décharge ${saved.numero} enregistrée`);
     setEnEdition(null);
     await charger();
     aller("decharges");
   };
+  // Après une réattribution : rechargement, puis éventuellement décharge pré-remplie pour le nouveau détenteur
+  const apresReattribution = async (e, data, decharge) => {
+    setToast(e.utilisateur ? `${e.descriptif} réattribué à ${e.utilisateur}` : `${e.descriptif} remis en stock`);
+    setVersionReleves(v => v + 1);
+    await charger();
+    if (!decharge) return;
+    const serie = e.referenceSerie || "";
+    const estImei = /^\d{15}$/.test(serie) && imeiOk(serie);
+    const structurel = Boolean(data.structureId);
+    ouvrirFormulaire({
+      dateRemise: data.date,
+      structure: structurel ? [e.siteSanitaire, e.district, e.region].filter(Boolean).join(" / ") || e.structureNom : data.direction || data.site || "",
+      beneficiaireNom: structurel ? data.recuPar || e.structureNom : data.detenteur,
+      articles: [{ designation: e.descriptif || "", quantite: 1, identifiant: e.numeroFiche || e.identifiant || "",
+        imei: estImei ? serie : "", numeroSerie: estImei ? "" : serie }]
+    });
+  };
+
   const supprimerDecharge = async id => {
     await api.supprimer(id);
     setFicheId(null);
@@ -146,10 +166,13 @@ function Application({ utilisateur, setUtilisateur }) {
           {[...MENU, ...(estAdmin ? [ADMIN] : [])].map((s, i) => (
             <div className="nav-section" key={i}>
               {s.titre && <span className="nav-titre">{s.titre}</span>}
-              {s.pages.map(([k, t, ic]) => (
+              {s.pages.filter(([k]) => k !== "classement" || peutModifier).map(([k, t, ic]) => (
                 <button key={k} className="nav-lien" aria-current={page === k || (k === "decharges" && page === "saisie") ? "page" : undefined}
                   onClick={() => aller(k)}>
                   <Icone nom={ic} />{t}
+                  {k === "classement" && equipements.some(e => !e.classementValide) && (
+                    <span className="nav-badge">{equipements.filter(e => !e.classementValide).length}</span>
+                  )}
                   {k === "inventaire" && equipements.length > 0 && (
                     <span className="nav-badge">{equipements.filter(e => !e.inventorieLe).length}</span>
                   )}
@@ -200,14 +223,14 @@ function Application({ utilisateur, setUtilisateur }) {
           )}
           {page === "equipements" && (detail ? (
             <FicheEquipement equipement={detail} equipements={equipements} versionReleves={versionReleves}
-              onRetour={() => setDetailId(null)} onConstat={apresConstat} peutModifier={peutModifier} agent={utilisateur.nom} />
+              onRetour={() => setDetailId(null)} onConstat={apresConstat} onReattribue={apresReattribution} peutModifier={peutModifier} agent={utilisateur.nom} moi={utilisateur} />
           ) : (
             <Equipements equipements={equipements} recherche={recherche} setRecherche={setRecherche}
               onOuvrir={ouvrirEquipement} />
           ))}
           {page === "inventaire" && (
             <InventairePhysique equipements={equipements} etat={etat} onEnregistre={apresConstat}
-              peutModifier={peutModifier} agent={utilisateur.nom} onOuvrirEquipement={ouvrirEquipement} />
+              peutModifier={peutModifier} agent={utilisateur.nom} moi={utilisateur} onOuvrirEquipement={ouvrirEquipement} />
           )}
           {page === "historique" && (
             <Historique version={versionReleves} decharges={decharges} onOuvrirEquipement={ouvrirEquipement}
@@ -221,6 +244,10 @@ function Application({ utilisateur, setUtilisateur }) {
             <Inventaire items={items} structures={structures}
               onOuvrir={setFicheId} onNouvelle={peutModifier ? () => ouvrirFormulaire(null) : null} />
           )}
+          {page === "classement" && peutModifier && (
+            <Classement equipements={equipements} onChange={charger} onOuvrirEquipement={ouvrirEquipement}
+              onToast={setToast} estAdmin={estAdmin} peutModifier={peutModifier} />
+          )}
           {page === "utilisateurs" && estAdmin && <Utilisateurs moi={utilisateur} onToast={setToast} />}
           {page === "saisie" && peutModifier && (
             <FormulaireDecharge
@@ -229,7 +256,7 @@ function Application({ utilisateur, setUtilisateur }) {
               decharges={decharges}
               structures={structures}
               onEnregistrer={enregistrerDecharge}
-              onAnnuler={() => { setEnEdition(null); aller("decharges"); }}
+              onAnnuler={() => { const brouillon = enEdition && !enEdition.id; setEnEdition(null); aller("decharges"); if (brouillon) setToast("Décharge non créée : la réattribution reste enregistrée"); }}
             />
           )}
         </main>

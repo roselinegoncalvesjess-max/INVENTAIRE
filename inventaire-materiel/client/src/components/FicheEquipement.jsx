@@ -5,6 +5,10 @@ import Icone from "./Icone.jsx";
 import { Statut } from "./Commun.jsx";
 import FicheInventaire from "./FicheInventaire.jsx";
 import Etiquettes from "./Etiquettes.jsx";
+import { FormReattribution, PanneauDetenteurs } from "./Detenteurs.jsx";
+import { FenetreClasser, PastilleType } from "./Beneficiaires.jsx";
+import { DateReleve } from "./DatesInventaire.jsx";
+import { apiClassement } from "../api.js";
 
 const LIBELLES = {
   numeroFiche: "N° de fiche", identifiant: "Identifiant", type: "Type", categorie: "Catégorie", descriptif: "Descriptif",
@@ -14,13 +18,21 @@ const LIBELLES = {
 };
 
 // Page détail d'un équipement du registre
-export default function FicheEquipement({ equipement: e, equipements, versionReleves, onRetour, onConstat, peutModifier, agent }) {
+export default function FicheEquipement({ equipement: e, equipements, versionReleves, onRetour, onConstat, onReattribue, peutModifier, agent, moi }) {
   const [releves, setReleves] = useState([]);
   const [constat, setConstat] = useState(false);
   const [copie, setCopie] = useState("");
+  const [attributions, setAttributions] = useState([]);
+  const [reattribuer, setReattribuer] = useState(false);
+  const [classer, setClasser] = useState(false);
+  const validerClassement = async () => {
+    await apiClassement.classer([e.id], e.typeBeneficiaire, e.structureId);
+    await onConstat("Classement validé");
+  };
 
   useEffect(() => {
     apiEquipements.releves(e.id).then(setReleves).catch(() => setReleves([]));
+    apiEquipements.attributions(e.id).then(setAttributions).catch(() => setAttributions([]));
   }, [e.id, versionReleves]);
 
   const manque = manquants(e);
@@ -35,6 +47,12 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
     const saved = await apiEquipements.inventorier(e.id, data);
     setConstat(false);
     await onConstat(`${saved.numeroFiche || saved.descriptif} : inventaire enregistré`);
+  };
+
+  const enregistrerAttribution = async (data, decharge) => {
+    const saved = await apiEquipements.reattribuer(e.id, data);
+    setReattribuer(false);
+    await onReattribue(saved, data, decharge);
   };
 
   const Valeur = ({ v, mono, copiable }) => (
@@ -76,11 +94,22 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
           </div>
         </div>
         <div className="toolbar">
+          {peutModifier && <button className="btn" onClick={() => setReattribuer(true)}><Icone nom="utilisateur" taille={16} />Réattribuer</button>}
           {peutModifier && <button className="btn primary" onClick={() => setConstat(true)}><Icone nom="inventaire" taille={16} />Saisir un constat</button>}
         </div>
       </div>
 
       {e.anomalieImport && <p className="notice" style={{ margin: 0 }}><b>Anomalie à l’import :</b> {e.anomalieImport}</p>}
+      {!e.classementValide && e.typeBeneficiaire && (
+        <div className="notice info ligne-actions">
+          <span><b>Classement proposé :</b> <PastilleType type={e.typeBeneficiaire} />{e.structureNom && <> {e.structureNom}</>}
+            {e.classementRaison && <span className="muted"> — {e.classementRaison}</span>}</span>
+          {peutModifier && <span className="toolbar">
+            <button className="btn petit" onClick={() => setClasser(true)}>Corriger</button>
+            <button className="btn petit primary" onClick={validerClassement}>Valider</button>
+          </span>}
+        </div>
+      )}
 
       <div className="detail">
         <div className="pile">
@@ -98,15 +127,21 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
             <div className="notes"><span className="label">Observation</span><p>{e.observation || <i className="muted">Aucune observation.</i>}</p></div>
           </Panneau>
 
-          <Panneau icone="utilisateur" titre="Affectation">
+          <PanneauDetenteurs equipement={e} attributions={attributions} peutModifier={peutModifier}
+            onReattribuer={() => setReattribuer(true)} />
+
+          <Panneau icone="lieu" titre="Affectation">
             <dl className="infos">
-              <Info l="Utilisateur principal"><Valeur v={e.utilisateur} /></Info>
+              <Info l="Type de bénéficiaire"><PastilleType type={e.typeBeneficiaire} />{!e.classementValide && <span className="muted petit-texte"> (à valider)</span>}</Info>
+              <Info l="Détenteur actuel"><Valeur v={e.utilisateur || "En stock"} /></Info>
+              {e.region && <Info l="Région sanitaire"><Valeur v={e.region} /></Info>}
+              {e.district && <Info l="District sanitaire"><Valeur v={e.district} /></Info>}
+              {e.siteSanitaire && <Info l="Site sanitaire"><Valeur v={e.siteSanitaire} /></Info>}
               <Info l="Direction / service"><Valeur v={e.direction} /></Info>
               <Info l="Site"><Valeur v={e.site} /></Info>
               <Info l="Emplacement"><Valeur v={e.emplacement} /></Info>
-              {e.nouvelUtilisateur && <Info l="Nouvel utilisateur"><Valeur v={e.nouvelUtilisateur} /></Info>}
-              {e.dateNouvelleAttribution && <Info l="Attribué le"><Valeur v={fmtDate(e.dateNouvelleAttribution)} mono /></Info>}
             </dl>
+            {peutModifier && <button className="btn petit lien-btn" onClick={() => setClasser(true)}>Modifier le type de bénéficiaire</button>}
           </Panneau>
 
           <Panneau icone="finance" titre="Achat & finances">
@@ -144,7 +179,7 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
               <ol className="frise">
                 {releves.map(h => (
                   <li key={h.id}>
-                    <span className="mono muted">{fmtDate(h.date)}</span>
+                    <DateReleve releve={h} moi={moi} onModifie={onConstat} />
                     <span><b>{h.constat}</b>{h.etatPhysique && ` · ${h.etatPhysique}`} — {h.agent}</span>
                     {h.commentaire && <i className="muted">{h.commentaire}</i>}
                     {Object.keys(h.modifications || {}).length > 0 && (
@@ -159,6 +194,17 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
           </Panneau>
         </div>
       </div>
+
+      {classer && (
+        <FenetreClasser ids={[e.id]} titre={e.descriptif} typeInitial={e.typeBeneficiaire} structureInitiale={e.structureId}
+          onFermer={() => setClasser(false)}
+          onFait={async () => { setClasser(false); await onConstat("Classement enregistré"); }} />
+      )}
+
+      {reattribuer && (
+        <FormReattribution equipement={e} equipements={equipements} depuis={attributions.find(a => a.enCours)?.du}
+          onEnregistrer={enregistrerAttribution} onFermer={() => setReattribuer(false)} />
+      )}
 
       {constat && (
         <FicheInventaire equipement={e} equipements={equipements} aSuivant={false} agent={agent}

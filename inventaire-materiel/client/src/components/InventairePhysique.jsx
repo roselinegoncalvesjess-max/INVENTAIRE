@@ -4,6 +4,7 @@ import { fmtDate, manquants, norm, seriesEnDouble } from "../utils.js";
 import FicheInventaire from "./FicheInventaire.jsx";
 import Icone from "./Icone.jsx";
 import { PageTete } from "./Commun.jsx";
+import { BandeauDateSeance, FenetreCorrigerDates } from "./DatesInventaire.jsx";
 
 const VUES = {
   tous: "Tous les équipements",
@@ -27,7 +28,8 @@ const trier = list => [...new Set(list.filter(Boolean))].sort((a, b) => a.locale
 
 // Inventaire physique : on parcourt le registre importé, on constate la présence de chaque
 // équipement et on complète les informations manquantes.
-export default function InventairePhysique({ equipements, etat, onEnregistre, peutModifier, agent, onOuvrirEquipement }) {
+export default function InventairePhysique({ equipements, etat, onEnregistre, peutModifier, agent, moi, onOuvrirEquipement }) {
+  const [corriger, setCorriger] = useState(false);
   const [recherche, setRecherche] = useState("");
   const [site, setSite] = useState("");
   const [categorie, setCategorie] = useState("");
@@ -77,6 +79,10 @@ export default function InventairePhysique({ equipements, etat, onEnregistre, pe
         <a className="btn" href={apiEquipements.urlExport} download><Icone nom="export" taille={16} />Exporter CSV</a>
         {peutModifier && <button className="btn primary" onClick={() => setOuvert("nouveau")}><Icone nom="plus" taille={16} />Équipement non répertorié</button>}
       </PageTete>
+      {peutModifier && <BandeauDateSeance peutModifier={peutModifier} onCorriger={() => setCorriger(true)} />}
+      {corriger && <FenetreCorrigerDates moi={moi} onFermer={() => setCorriger(false)}
+        onFait={async msg => { setCorriger(false); await onEnregistre(msg); }} />}
+
       <div className="progress">
         <Jauge valeur={faits} total={total} libelle="Inventoriés" />
         <Jauge valeur={complets} total={total} libelle="Fiches complètes" />

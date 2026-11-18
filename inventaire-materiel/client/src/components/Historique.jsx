@@ -9,7 +9,8 @@ const TYPES = {
   constat: { libelle: "Constat", classe: "ok", icone: "ok" },
   absence: { libelle: "Absence", classe: "dup", icone: "absent" },
   completion: { libelle: "Complétion", classe: "info", icone: "inventaire" },
-  remise: { libelle: "Remise", classe: "violet", icone: "remis" }
+  remise: { libelle: "Remise", classe: "violet", icone: "remis" },
+  reattribution: { libelle: "Réattribution", classe: "ex", icone: "utilisateur" }
 };
 
 const decaler = jours => {
@@ -20,6 +21,7 @@ const decaler = jours => {
 // Tous les mouvements du parc : constats d'inventaire et remises de matériel (décharges)
 export default function Historique({ version, decharges, onOuvrirEquipement, onOuvrirDecharge }) {
   const [releves, setReleves] = useState([]);
+  const [attributions, setAttributions] = useState([]);
   const [etat, setEtat] = useState("chargement");
   const [recherche, setRecherche] = useState("");
   const [type, setType] = useState("");
@@ -29,7 +31,9 @@ export default function Historique({ version, decharges, onOuvrirEquipement, onO
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    apiEquipements.tousReleves().then(r => { setReleves(r); setEtat("ok"); }).catch(() => setEtat("erreur"));
+    Promise.all([apiEquipements.tousReleves(), apiEquipements.toutesAttributions()])
+      .then(([r, a]) => { setReleves(r); setAttributions(a); setEtat("ok"); })
+      .catch(() => setEtat("erreur"));
   }, [version]);
 
   const mouvements = useMemo(() => {
@@ -47,10 +51,17 @@ export default function Historique({ version, decharges, onOuvrirEquipement, onO
       detail: d.beneficiaireNom + (d.beneficiaireFonction ? ` · ${d.beneficiaireFonction}` : ""),
       lieu: d.structure, par: d.creePar || "", note: ""
     }));
-    return [...deReleves, ...deDecharges].sort((a, b) => b.date.localeCompare(a.date) || b.cle.localeCompare(a.cle));
-  }, [releves, decharges]);
+    const deAttributions = attributions.map(a => ({
+      cle: "a" + a.id, date: a.du || "", type: "reattribution",
+      titre: a.descriptif, sousTitre: a.numeroFiche, equipementId: a.equipementId,
+      detail: a.aPrecedent ? `${a.precedent || "En stock"} → ${a.detenteur || "En stock"}` : `Attribué à ${a.detenteur || "stock"}`,
+      lieu: a.direction || a.site, par: a.saisiPar || (a.origine === "import" ? "Fichier Excel" : ""),
+      note: [a.motif, a.commentaire].filter(Boolean).join(" · ")
+    }));
+    return [...deReleves, ...deDecharges, ...deAttributions].sort((a, b) => b.date.localeCompare(a.date) || b.cle.localeCompare(a.cle));
+  }, [releves, decharges, attributions]);
 
-  const agents = useMemo(() => [...new Set(releves.map(r => r.agent))].sort((a, b) => a.localeCompare(b, "fr")), [releves]);
+  const agents = useMemo(() => [...new Set(mouvements.map(m => m.par).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [mouvements]);
 
   const q = norm(recherche);
   const lignes = mouvements.filter(m =>
@@ -66,13 +77,14 @@ export default function Historique({ version, decharges, onOuvrirEquipement, onO
 
   return (
     <div className="pile">
-      <PageTete icone="historique" titre="Historique" sous="Tous les mouvements du parc : constats d’inventaire et remises de matériel" />
+      <PageTete icone="historique" titre="Historique" sous="Tous les mouvements du parc : constats d’inventaire, réattributions et remises de matériel" />
 
       <section className="kpis">
         <Carte titre="Total" valeur={mouvements.length} sous="tous les mouvements" icone="historique" teinte="bleu" />
         <Carte titre="Constats" valeur={compte("constat") + compte("completion")} sous={`dont ${compte("completion")} avec complétion`} icone="ok" teinte="vert" />
         <Carte titre="Absences" valeur={compte("absence")} sous="absents, volés ou perdus" icone="absent" teinte="rouge" />
         <Carte titre="Remises" valeur={compte("remise")} sous="décharges de matériel" icone="remis" teinte="violet" />
+        <Carte titre="Réattributions" valeur={compte("reattribution")} sous="changements de détenteur" icone="utilisateur" teinte="orange" />
       </section>
 
       <section className="filtres">

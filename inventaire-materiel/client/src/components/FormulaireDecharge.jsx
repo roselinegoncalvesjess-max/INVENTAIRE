@@ -67,8 +67,8 @@ export default function FormulaireDecharge({ decharge, decharges, structures, on
   return (
     <form className="sheet" onSubmit={soumettre} noValidate>
       <div className="formhead">
-        <h2>{decharge ? "Modifier la décharge" : "Nouvelle décharge de remise"}</h2>
-        <span className="mono muted">{decharge ? decharge.numero : "N° attribué à l’enregistrement"}</span>
+        <h2>{decharge?.id ? "Modifier la décharge" : "Nouvelle décharge de remise"}</h2>
+        <span className="mono muted">{decharge?.id ? decharge.numero : "N° attribué à l’enregistrement"}</span>
       </div>
 
       <fieldset>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiEquipements } from "../api.js";
-import { aujourdhui, CHAMPS_REQUIS, CONSTATS, ETATS, fmtDate, fmtMontant, manquants, norm, STATUTS } from "../utils.js";
+import { lireDateSeance, aujourdhui, CHAMPS_REQUIS, CONSTATS, ETATS, fmtDate, fmtMontant, manquants, norm, STATUTS } from "../utils.js";
 
 // Champs du registre modifiables dans la fiche
 const CHAMPS = ["numeroFiche", "identifiant", "type", "categorie", "descriptif", "referenceSerie", "accessoires",
@@ -21,7 +21,7 @@ export default function FicheInventaire({ equipement: e, equipements, aSuivant, 
   const [champs, setChamps] = useState(() =>
     Object.fromEntries(CHAMPS.map(k => [k, e?.[k] === null || e?.[k] === undefined ? "" : String(e[k])])));
   const [releve, setReleve] = useState(() => ({
-    date: aujourdhui(), agent: agent || "", constat: "Présent", etatPhysique: e?.etatPhysique || "", commentaire: ""
+    date: lireDateSeance() || aujourdhui(), agent: agent || "", constat: "Présent", etatPhysique: e?.etatPhysique || "", commentaire: ""
   }));
   const [historique, setHistorique] = useState([]);
   const [erreur, setErreur] = useState("");
@@ -57,6 +57,7 @@ export default function FicheInventaire({ equipement: e, equipements, aSuivant, 
   async function soumettre(suivant) {
     const manque = [];
     if (!releve.date) manque.push("la date de l’inventaire");
+    if (releve.date > aujourdhui()) { setErreur("La date de l’inventaire ne peut pas être dans le futur."); return; }
     if (!champs.descriptif.trim()) manque.push("le descriptif");
     if (manque.length) { setErreur("À compléter : " + manque.join(", ") + "."); return; }
     if (champs.valeurAcquisition && !Number.isFinite(Number(champs.valeurAcquisition.replace(/\s/g, "").replace(",", ".")))) {
@@ -114,7 +115,8 @@ export default function FicheInventaire({ equipement: e, equipements, aSuivant, 
           <legend><span className="n">1</span> Constat</legend>
           <div className="grid">
             <label className="field"><span className="label">Date de l’inventaire *</span>
-              <input type="date" value={releve.date} onChange={majReleve("date")} /></label>
+              <input type="date" value={releve.date} max={aujourdhui()} onChange={majReleve("date")} />
+              {releve.date && releve.date !== aujourdhui() && <span className="muted petit-texte">Constat daté du {fmtDate(releve.date)}, saisi aujourd’hui</span>}</label>
             <label className="field"><span className="label">Agent qui inventorie *</span>
               <input value={releve.agent} readOnly title="Le constat est enregistré au nom du compte connecté" /></label>
             <label className="field"><span className="label">État physique</span>

@@ -102,3 +102,22 @@ export const STATUT_STYLE = {
 
 export const compter = (liste, cle) =>
   liste.reduce((m, e) => { const k = (typeof cle === "function" ? cle(e) : e[cle]) || "Non renseigné"; m[k] = (m[k] || 0) + 1; return m; }, {});
+
+// Types de bénéficiaire (ordre d'affichage) — couleurs : voir les jetons --b-* de styles.css
+export const TYPES_BENEFICIAIRE = {
+  personnel:   { libelle: "Personnel NPSP",      court: "Personnel", couleur: "var(--b-personnel)" },
+  service:     { libelle: "Service NPSP",        court: "Service",   couleur: "var(--b-service)" },
+  site:        { libelle: "Site sanitaire",      court: "Site",      couleur: "var(--b-site)" },
+  district:    { libelle: "District sanitaire",  court: "District",  couleur: "var(--b-district)" },
+  region:      { libelle: "Région sanitaire",    court: "Région",    couleur: "var(--b-region)" },
+  non_affecte: { libelle: "Non affecté",         court: "Non affecté", couleur: "var(--b-aucun)" }
+};
+export const NIVEAU_DU_TYPE = { site: "site", district: "district", region: "region" };
+export const NIVEAUX = { region: "Région sanitaire", district: "District sanitaire", site: "Site sanitaire" };
+
+// Date de l'inventaire physique choisie pour la séance de saisie (mémorisée sur ce poste)
+const CLE_SEANCE = "parcit.date-inventaire";
+export const lireDateSeance = () => {
+  try { const d = localStorage.getItem(CLE_SEANCE); return d && d <= aujourdhui() ? d : ""; } catch { return ""; }
+};
+export const ecrireDateSeance = d => { try { d ? localStorage.setItem(CLE_SEANCE, d) : localStorage.removeItem(CLE_SEANCE); } catch { /* stockage indisponible */ } };

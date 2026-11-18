@@ -250,3 +250,21 @@ emplacement, statut, observation
 inventorie_le, inventorie_par,
 constat, etat_physique, anomalie_import
 ```
+
+## Réattribution des appareils
+
+Chaque appareil garde la liste de ses **détenteurs successifs** (table `attributions`, une ligne par période, `en_cours` = détenteur actuel, `detenteur` vide = en stock). La colonne `equipements.utilisateur` contient toujours le détenteur actuel.
+
+- Fiche équipement → bouton **Réattribuer** (admin et agent) : motif, date, nouveau détenteur, direction, site, emplacement. Le motif « Retour en stock » libère l'appareil. Une case propose de préparer ensuite la **décharge** pré-remplie.
+- Un utilisateur différent saisi lors d'un **constat d'inventaire** ouvre aussi une nouvelle période (motif « Constaté lors de l'inventaire »).
+- Liste : badge « Réattribué », filtre « Réattribués uniquement », recherche par ancien détenteur. Historique : type « Réattribution ». Export CSV : détenteur actuel, depuis, précédent, anciens.
+- Reprise automatique au démarrage : l'« Utilisateur » de l'Excel devient la première période ; un « Nouvel utilisateur » qui contient des lettres devient le détenteur actuel (la valeur « 225 » de la ligne N° Ord 33 est ignorée).
+
+## Bénéficiaires : personnel, services, structures sanitaires
+
+Chaque équipement a un **type de bénéficiaire** (`equipements.type_beneficiaire`) : `personnel`, `service` (service ou lieu de la NPSP), `site`, `district`, `region` (structures sanitaires) ou `non_affecte`. Les structures sanitaires forment un référentiel `structures_sanitaires` (région → district → site, avec responsable et téléphone) ; `structure_id` relie l'équipement à sa structure.
+
+- **Reprise automatique** (au démarrage, pour les équipements non classés) : `server/src/classement.js` propose un type à partir de l'utilisateur, du site et de la direction (« DS AGBOVILLE/CSR N'CHOMPO/PHARMACIE » → site CSR N'CHOMPO du district DS AGBOVILLE) et crée les districts et sites trouvés. Chaque proposition reste **à valider** (`classement_valide = false`, raison dans `classement_raison`).
+- Page **À classer** (admin, agent) : valider les propositions en lot ou les corriger, regrouper les **noms écrits de plusieurs façons** (ex. « LOUKOU N'Goran » / « LOUKOU N'GORAN »), gérer la pyramide sanitaire (les régions sont à créer, puis y rattacher les districts).
+- **Réattribuer** : on choisit d'abord le type ; pour une structure, on la choisit dans le référentiel (ou on la crée) et on peut noter la personne qui reçoit. Un détenteur changé lors d'un inventaire remet le classement « à valider ».
+- Liste : filtres Bénéficiaire et District sanitaire. Tableau de bord : répartition par bénéficiaire (nombre et valeur) et matériel remis par district. Export CSV : type, région, district, site sanitaire, classement validé.

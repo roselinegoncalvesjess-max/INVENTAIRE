@@ -5,6 +5,7 @@
   --stamp:#c2362f; --ok:#167a3e; --warn:#9a5b00; --warn-bg:#fff4de;
   --st-bon:#0ca30c; --st-neutre:#2a78d6; --st-attention:#fab219; --st-critique:#d03b3b; --st-vide:#a3a29c;
   --t-bleu:#2563eb; --t-vert:#16a34a; --t-orange:#ea7a1a; --t-rouge:#dc3b3b; --t-violet:#6d4fd8;
+  --b-personnel:#2563eb; --b-service:#6d4fd8; --b-site:#16a34a; --b-district:#ea7a1a; --b-region:#0e8fa0; --b-aucun:#a3a29c;
   --hero-1:#0f2a6b; --hero-2:#2563eb;
   --ombre:0 1px 2px rgba(20,28,43,.05),0 4px 14px rgba(20,28,43,.05);
   --f-display:"Archivo",system-ui,sans-serif;
@@ -18,6 +19,7 @@
   --stamp:#ff8a80; --ok:#5ccf95; --warn:#f2b84b; --warn-bg:#2e2410;
   --st-neutre:#3987e5;
   --t-bleu:#6ea0ff; --t-vert:#4ade80; --t-orange:#fb9a4b; --t-rouge:#f87171; --t-violet:#a78bfa;
+  --b-personnel:#6ea0ff; --b-service:#a78bfa; --b-site:#4ade80; --b-district:#fb9a4b; --b-region:#3cc4d4; --b-aucun:#8a8984;
   --hero-1:#0b1a3d; --hero-2:#1e4fc2;
   --ombre:0 1px 2px rgba(0,0,0,.3); color-scheme:dark}}
 :root[data-theme="dark"]{
@@ -26,6 +28,7 @@
   --stamp:#ff8a80; --ok:#5ccf95; --warn:#f2b84b; --warn-bg:#2e2410;
   --st-neutre:#3987e5;
   --t-bleu:#6ea0ff; --t-vert:#4ade80; --t-orange:#fb9a4b; --t-rouge:#f87171; --t-violet:#a78bfa;
+  --b-personnel:#6ea0ff; --b-service:#a78bfa; --b-site:#4ade80; --b-district:#fb9a4b; --b-region:#3cc4d4; --b-aucun:#8a8984;
   --hero-1:#0b1a3d; --hero-2:#1e4fc2;
   --ombre:0 1px 2px rgba(0,0,0,.3); color-scheme:dark}
 
@@ -327,3 +330,52 @@ legend span.n{font:700 .72rem var(--f-mono);color:var(--accent);background:var(-
 .card.petite{max-width:440px}
 tr.inactif td{color:var(--muted)}
 td select{width:auto;min-width:160px}
+
+/* ---------- Détenteurs / réattribution ---------- */
+.card.petite-moyenne{max-width:640px}
+.panneau-titre .chip{margin-left:auto}
+.detenteur-actuel{display:flex;gap:12px;align-items:center;padding:12px;border-radius:12px;background:var(--sunk)}
+.detenteur-actuel>div{display:grid;gap:2px;min-width:0}
+.detenteur-actuel b{font-size:1rem;overflow-wrap:anywhere}
+.frise.detenteurs li::before{background:var(--t-violet)}
+.case{display:flex;gap:8px;align-items:center;font-size:.88rem;cursor:pointer}
+.case input{width:16px;height:16px;accent-color:var(--accent)}
+.chip.reattribue{margin-left:6px}
+
+/* ---------- Types de bénéficiaire, classement, référentiel ---------- */
+.chip.type-b{background:color-mix(in srgb,var(--c) 15%,transparent);color:var(--ink);box-shadow:inset 3px 0 0 var(--c)}
+.segment.types{width:auto}
+.segment.types label{gap:8px;padding:8px 12px}
+.segment.types label .pastille{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.segment.types label.on{background:color-mix(in srgb,var(--c) 18%,var(--surface));color:var(--ink);box-shadow:inset 0 -3px 0 var(--c)}
+.pile-serree{display:grid;gap:6px}
+button.lien,.lien-btn{background:none;border:0;padding:0;font:inherit;cursor:pointer;color:var(--accent);font-weight:600;text-align:left}
+.lien-btn{font-size:.82rem;justify-self:start}
+.encart{display:grid;gap:10px;padding:12px;border:1px dashed var(--line-fort);border-radius:var(--r-petit);background:var(--sunk)}
+.notice.info{background:var(--accent-doux);color:var(--ink)}
+.onglets{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.onglet{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;font:600 .92rem var(--f-body);color:var(--muted);cursor:pointer;display:flex;gap:8px;align-items:center}
+.onglet.on{color:var(--ink);border-bottom-color:var(--accent)}
+tr.choisi td{background:var(--accent-doux)}
+.grille-doublons{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+.choix-noms{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.arbre,.arbre ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.arbre ul{padding-left:22px;border-left:2px solid var(--line);margin:6px 0 4px 10px}
+.structure-ligne{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 0}
+.structure-ligne .toolbar{margin-left:auto}
+.niveau{font:700 .68rem var(--f-mono);text-transform:uppercase;padding:2px 6px;border-radius:5px;background:var(--sunk);color:var(--muted)}
+.niveau.region{box-shadow:inset 3px 0 0 var(--b-region)} .niveau.district{box-shadow:inset 3px 0 0 var(--b-district)} .niveau.site{box-shadow:inset 3px 0 0 var(--b-site)}
+.chemin{font-size:.82rem;color:var(--muted)}
+.ligne-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.montants-type{list-style:none;margin:10px 0 0;padding:10px 0 0;border-top:1px solid var(--line);display:grid;gap:6px;font-size:.84rem}
+.montants-type li{display:grid;grid-template-columns:12px 1fr auto;gap:10px;align-items:center}
+.montants-type .pastille{width:10px;height:10px;border-radius:50%}
+.montants-type b{font-variant-numeric:tabular-nums}
+
+/* ---------- Date de l'inventaire physique ---------- */
+.bandeau-date{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;padding:12px 16px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);box-shadow:var(--ombre)}
+.bandeau-date .field{min-width:180px}
+.bandeau-date p{flex:1 1 260px}
+.bandeau-date.decalee{border-color:var(--t-orange);box-shadow:inset 4px 0 0 var(--t-orange),var(--ombre)}
+.date-edition{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.date-edition input{padding:4px 6px}

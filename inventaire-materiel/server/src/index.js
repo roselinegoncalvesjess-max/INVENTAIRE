@@ -3,11 +3,14 @@ import express from "express";
 import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
-import { initSchema } from "./db.js";
+import { initSchema, pool } from "./db.js";
+import { amorcerClassement } from "./classement.js";
 import { ecritureReservee, exigerConnexion, exigerRole, routesAuth } from "./auth.js";
 import dechargesRouter from "./routes/decharges.js";
 import equipementsRouter from "./routes/equipements.js";
 import utilisateursRouter from "./routes/utilisateurs.js";
+import classementRouter from "./routes/classement.js";
+import structuresRouter from "./routes/structures.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -29,6 +32,8 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/api/auth", routesAuth);
 app.use("/api/decharges", exigerConnexion, ecritureReservee("admin", "agent"), dechargesRouter);
 app.use("/api/equipements", exigerConnexion, ecritureReservee("admin", "agent"), equipementsRouter);
+app.use("/api/classement", exigerConnexion, ecritureReservee("admin", "agent"), classementRouter);
+app.use("/api/structures", exigerConnexion, ecritureReservee("admin", "agent"), structuresRouter);
 app.use("/api/utilisateurs", exigerConnexion, exigerRole("admin"), utilisateursRouter);
 app.use("/api", (req, res) => res.status(404).json({ message: "Adresse inconnue." }));
 
@@ -51,6 +56,7 @@ const adressesReseau = () => Object.values(networkInterfaces()).flat()
   .filter(i => i && i.family === "IPv4" && !i.internal).map(i => i.address);
 
 initSchema()
+  .then(async () => { const n = await amorcerClassement(pool); if (n) console.log(`Classement proposé pour ${n} équipement(s) : à valider dans « À classer ».`); })
   // HOST=127.0.0.1 quand un proxy HTTPS local est placé devant (sinon : tout le réseau)
   .then(() => app.listen(port, process.env.HOST || "0.0.0.0", () => {
     console.log(`API inventaire : http://localhost:${port}/api`);

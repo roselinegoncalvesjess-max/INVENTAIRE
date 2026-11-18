@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { apiEquipements } from "../api.js";
-import { compter, fmtCompact, fmtMontant, manquants, STATUT_STYLE } from "../utils.js";
+import { compter, fmtCompact, fmtMontant, manquants, STATUT_STYLE, TYPES_BENEFICIAIRE } from "../utils.js";
 import Icone from "./Icone.jsx";
 import { Anneau, Barres, Colonnes, regrouper } from "./Graphiques.jsx";
 
@@ -20,6 +20,8 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
     const incomplets = equipements.filter(e => manquants(e).length);
     const absents = equipements.filter(e => e.constat && e.constat !== "Présent");
     const anomalies = equipements.filter(e => e.anomalieImport);
+    const reattribues = equipements.filter(e => e.nbDetenteurs > 1);
+    const debutMois = new Date().toISOString().slice(0, 8) + "01";
     return {
       total, annee, colonnes, avantDe,
       enService: statuts["En service"] || 0,
@@ -30,7 +32,16 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
       statuts: Object.keys(STATUT_STYLE).map(k => ({ libelle: k, valeur: statuts[k] || 0, couleur: STATUT_STYLE[k].couleur })),
       categories: regrouper(compter(equipements, "categorie"), 7),
       sites: regrouper(compter(equipements, "site"), 5),
-      incomplets, absents, anomalies,
+      incomplets, absents, anomalies, reattribues,
+      beneficiaires: Object.entries(TYPES_BENEFICIAIRE).map(([k, t]) => {
+        const liste = equipements.filter(e => e.typeBeneficiaire === k);
+        return { cle: k, libelle: t.libelle, valeur: liste.length, couleur: t.couleur,
+          montant: liste.reduce((m, e) => m + (Number(e.valeurAcquisition) || 0), 0) };
+      }),
+      sanitaires: equipements.filter(e => ["site", "district", "region"].includes(e.typeBeneficiaire)),
+      districts: regrouper(compter(equipements.filter(e => e.district), "district"), 8),
+      aClasser: equipements.filter(e => !e.classementValide).length,
+      reattribuesMois: reattribues.filter(e => e.detenteurDepuis && e.detenteurDepuis >= debutMois).length,
       priorites: [...absents, ...anomalies, ...incomplets.filter(e => !e.inventorieLe)]
         .filter((e, i, a) => a.findIndex(x => x.id === e.id) === i).slice(0, 6)
     };
@@ -71,6 +82,10 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
           <div className="barre"><span style={{ width: pctInv + "%" }} /></div>
           <div className="kpi-pied"><span>{s.incomplets.length} fiches à compléter</span></div>
         </Kpi>
+        <Kpi teinte="violet" icone="utilisateur" titre="Réattribués" valeur={s.reattribues.length} sous="appareils ayant changé de détenteur"
+          onClick={() => onAller("historique")}>
+          <div className="kpi-pied"><span>{s.reattribuesMois} réattribution(s) ce mois-ci</span></div>
+        </Kpi>
         <Kpi teinte="rouge" icone="alerte" titre="Alertes" valeur={alertes} sous="absents, volés, anomalies">
           <div className="kpi-pied"><span>{s.absents.length} absent(s) · {s.anomalies.length} anomalie(s) d’import</span></div>
         </Kpi>
@@ -90,6 +105,30 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
             <p className="muted">État d’utilisation déclaré dans le registre</p>
           </div>
           <Anneau donnees={s.statuts} total={s.total} libelleTotal="équipements" />
+        </div>
+      </section>
+
+      <section className="grille-2">
+        <div className="panneau">
+          <div className="panneau-tete ligne">
+            <div><h2>Répartition par bénéficiaire</h2>
+              <p className="muted">Personnel et services de la NPSP, structures sanitaires{s.aClasser ? ` · ${s.aClasser} classement(s) à valider` : ""}</p></div>
+            {s.aClasser > 0 && <button className="btn" onClick={() => onAller("classement")}>À classer</button>}
+          </div>
+          <Anneau donnees={s.beneficiaires} total={s.total} libelleTotal="équipements" />
+          <ul className="montants-type">
+            {s.beneficiaires.filter(b => b.valeur).map(b => (
+              <li key={b.cle}><span className="pastille" style={{ background: b.couleur }} />{b.libelle}<b>{fmtCompact(b.montant)} FCFA</b></li>
+            ))}
+          </ul>
+        </div>
+        <div className="panneau">
+          <div className="panneau-tete">
+            <h2>Matériel remis aux structures sanitaires</h2>
+            <p className="muted">{s.sanitaires.length} équipement(s) · {fmtCompact(s.sanitaires.reduce((m, e) => m + (Number(e.valeurAcquisition) || 0), 0))} FCFA · par district (sites compris)</p>
+          </div>
+          {s.districts.length ? <Barres donnees={s.districts} total={s.sanitaires.length} />
+            : <p className="muted">Aucun équipement rattaché à un district.</p>}
         </div>
       </section>
 

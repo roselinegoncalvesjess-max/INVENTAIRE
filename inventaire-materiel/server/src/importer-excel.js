@@ -10,6 +10,7 @@ import "dotenv/config";
 import ExcelJS from "exceljs";
 import { fileURLToPath } from "node:url";
 import { pool, initSchema, transaction } from "./db.js";
+import { amorcerClassement } from "./classement.js";
 
 const args = process.argv.slice(2);
 const remplacer = args.includes("--remplacer");
@@ -136,7 +137,7 @@ async function main() {
   }
 
   await transaction(async client => {
-    if (remplacer) await client.query("TRUNCATE releves_inventaire, equipements RESTART IDENTITY");
+    if (remplacer) await client.query("TRUNCATE attributions, releves_inventaire, equipements RESTART IDENTITY");
     for (const e of equipements) {
       const cols = Object.keys(e);
       await client.query(
@@ -145,6 +146,9 @@ async function main() {
       );
     }
   });
+
+  await initSchema(); await amorcerClassement(pool); // attributions et classement de départ
+  // crée les attributions de départ à partir des colonnes Utilisateur / Nouvel utilisateur
 
   const anomalies = equipements.filter(e => e.anomalie_import);
   console.log(`${equipements.length} équipements importés depuis « ${ws.name} ».`);

@@ -118,3 +118,42 @@ export function validerReleve(body = {}) {
 
   return { donnees: { releve, champs } };
 }
+
+// ---------- Réattribution ----------
+
+export const MOTIFS_ATTRIBUTION = [
+  "Départ de l'utilisateur", "Mutation / changement de service", "Remplacement de matériel",
+  "Nouvel arrivant", "Prêt temporaire", "Retour en stock", "Correction du registre", "Autre"
+];
+export const RETOUR_STOCK = "Retour en stock";
+
+import { NIVEAU_DU_TYPE, TYPES_BENEFICIAIRE } from "./classement.js";
+
+// Nettoie et valide une réattribution. Renvoie { erreur } ou { donnees }.
+export function validerAttribution(body = {}) {
+  const motif = texte(body.motif);
+  const date = texte(body.date);
+  if (!MOTIFS_ATTRIBUTION.includes(motif)) return { erreur: "Choisissez le motif de la réattribution." };
+  if (!estDate(date)) return { erreur: "La date de la réattribution est obligatoire." };
+  const type = motif === RETOUR_STOCK ? "non_affecte" : texte(body.typeBeneficiaire) || "personnel";
+  if (!TYPES_BENEFICIAIRE.includes(type)) return { erreur: "Type de bénéficiaire inconnu." };
+  const structurel = Boolean(NIVEAU_DU_TYPE[type]);
+  const structureId = structurel ? Number(body.structureId) || null : null;
+  if (structurel && !structureId) return { erreur: "Choisissez la structure sanitaire qui reçoit l'appareil." };
+  // Pour une structure, le détenteur est la structure elle-même (nom fixé par la route)
+  const detenteur = type === "non_affecte" || structurel ? null : optionnel(body.detenteur);
+  if (!structurel && type !== "non_affecte" && !detenteur)
+    return { erreur: type === "service" ? "Le nom du service est obligatoire." : "Le nom du nouveau détenteur est obligatoire." };
+  if (detenteur && detenteur.length > 150) return { erreur: "Le nom du détenteur est trop long." };
+  const recuPar = structurel ? optionnel(body.recuPar) : null;
+  if (recuPar && recuPar.length > 150) return { erreur: "Le nom de la personne qui reçoit est trop long." };
+  return {
+    donnees: {
+      detenteur, date, motif, type, structureId, recuPar,
+      direction: optionnel(body.direction),
+      site: optionnel(body.site),
+      emplacement: optionnel(body.emplacement),
+      commentaire: optionnel(body.commentaire)
+    }
+  };
+}

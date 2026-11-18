@@ -24,7 +24,7 @@ if errorlevel 1 ( echo ERREUR : voir les messages ci-dessus. & pause & exit /b 1
 echo.
 docker compose ps
 echo.
-echo Application : http://localhost:3001
+echo Application : http://127.0.0.1:3001  (localhost peut etre capte par WSL sur ce poste)
 echo Pour les collegues : http://ADRESSE-IP-DU-PC:3001  (commande ipconfig pour l'adresse)
 echo Vous pouvez fermer cette fenetre : l'application continue de tourner.
 pause
