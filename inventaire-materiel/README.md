@@ -163,6 +163,59 @@ falloir remplacer `LocalSubnet` par la plage d'adresses du VPN.
 Le trafic circule en HTTP sur le réseau local (non chiffré). Pour un accès hors du bureau ou chiffré,
 prévoir HTTPS (certificat) ou un hébergement dédié.
 
+## Hébergement sur un VPS (Docker + Nginx + HTTPS)
+
+Prérequis : VPS Ubuntu/Debian avec Docker (plugin `docker compose`), Nginx et un nom de domaine dont
+l'enregistrement DNS (A/AAAA) pointe vers l'IP du VPS. Dans la suite, remplacer `parc.example.fr`.
+
+Schéma : Internet → Nginx (443, HTTPS) → `127.0.0.1:3001` (conteneur **app**) → conteneur **db**.
+Le port 3001 n'est jamais exposé publiquement (`ADRESSE_APP=127.0.0.1`), ce qui compte car un port
+publié par Docker contourne le pare-feu UFW.
+
+### Première installation
+
+```bash
+# 1. Code (le VPS doit avoir accès au dépôt GitHub : clé de déploiement SSH si le dépôt est privé)
+sudo mkdir -p /opt/parc-it && sudo chown "$USER" /opt/parc-it
+git clone https://github.com/roselinegoncalvesjess-max/INVENTAIRE.git /opt/parc-it
+cd /opt/parc-it/inventaire-materiel
+
+# 2. Configuration
+cp deploiement/env.vps.exemple .env && chmod 600 .env
+sed -i "s/^PGPASSWORD=.*/PGPASSWORD=$(openssl rand -hex 24)/" .env
+
+# 3. Démarrage
+docker compose up -d --build
+docker compose exec app npm run import            # registre depuis le fichier Excel
+docker compose exec app node src/creer-admin.js   # premier administrateur
+
+# 4. Nginx + certificat
+sudo cp deploiement/nginx-parc-it.conf /etc/nginx/sites-available/parc-it
+sudo sed -i "s/parc.example.fr/VOTRE-DOMAINE/" /etc/nginx/sites-available/parc-it
+sudo ln -s /etc/nginx/sites-available/parc-it /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d VOTRE-DOMAINE              # HTTPS + redirection automatique
+```
+
+Pare-feu : seuls SSH, 80 et 443 doivent être ouverts (`sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full'`).
+
+### Mises à jour
+
+Une fois les changements mergés dans `main` sur GitHub :
+
+```bash
+/opt/parc-it/inventaire-materiel/deploiement/deployer.sh
+```
+
+Le script sauvegarde la base (`~/sauvegardes-parc-it`, 14 dernières conservées), fait `git pull` de `main`,
+puis reconstruit et redémarre les conteneurs. Les sauvegardes restent sur le VPS : les copier
+régulièrement ailleurs (`scp`, stockage externe).
+
+### Points d'attention
+- `COOKIE_SECURE=1` : la connexion ne fonctionne qu'en HTTPS. Tester par `https://`, pas par l'IP.
+- Le blocage après 8 essais vise un identifiant : derrière Nginx, toutes les requêtes semblent venir
+  de la même adresse, le blocage s'applique donc à l'identifiant quelle que soit l'origine.
+
 ## Structure du projet
 
 ```
