@@ -1,0 +1,12 @@
+# Fins de ligne normalisées : LF dans le dépôt et dans le dossier de travail
+* text=auto eol=lf
+
+# Scripts Windows : CRLF obligatoire pour cmd.exe
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Fichiers binaires
+*.xlsx binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
