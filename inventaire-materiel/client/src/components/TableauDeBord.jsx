@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { apiEquipements } from "../api.js";
 import { compter, fmtCompact, fmtMontant, manquants, STATUT_STYLE, TYPES_BENEFICIAIRE } from "../utils.js";
 import Icone from "./Icone.jsx";
+import { enRetard } from "./Mouvements.jsx";
 import { Anneau, Barres, Colonnes, regrouper } from "./Graphiques.jsx";
 
 export default function TableauDeBord({ equipements, decharges, dateDuJour, onAller, onOuvrirEquipement }) {
@@ -21,6 +22,7 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
     const absents = equipements.filter(e => e.constat && e.constat !== "Présent");
     const anomalies = equipements.filter(e => e.anomalieImport);
     const reattribues = equipements.filter(e => e.nbDetenteurs > 1);
+    const retards = equipements.filter(e => enRetard(e.sortieEnCours));
     const debutMois = new Date().toISOString().slice(0, 8) + "01";
     return {
       total, annee, colonnes, avantDe,
@@ -32,7 +34,7 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
       statuts: Object.keys(STATUT_STYLE).map(k => ({ libelle: k, valeur: statuts[k] || 0, couleur: STATUT_STYLE[k].couleur })),
       categories: regrouper(compter(equipements, "categorie"), 7),
       sites: regrouper(compter(equipements, "site"), 5),
-      incomplets, absents, anomalies, reattribues,
+      incomplets, absents, anomalies, reattribues, retards,
       beneficiaires: Object.entries(TYPES_BENEFICIAIRE).map(([k, t]) => {
         const liste = equipements.filter(e => e.typeBeneficiaire === k);
         return { cle: k, libelle: t.libelle, valeur: liste.length, couleur: t.couleur,
@@ -42,14 +44,14 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
       districts: regrouper(compter(equipements.filter(e => e.district), "district"), 8),
       aClasser: equipements.filter(e => !e.classementValide).length,
       reattribuesMois: reattribues.filter(e => e.detenteurDepuis && e.detenteurDepuis >= debutMois).length,
-      priorites: [...absents, ...anomalies, ...incomplets.filter(e => !e.inventorieLe)]
+      priorites: [...retards, ...absents, ...anomalies, ...incomplets.filter(e => !e.inventorieLe)]
         .filter((e, i, a) => a.findIndex(x => x.id === e.id) === i).slice(0, 6)
     };
   }, [equipements]);
 
   const pctInv = s.total ? Math.round((s.inventories / s.total) * 100) : 0;
   const pctService = s.total ? Math.round((s.enService / s.total) * 100) : 0;
-  const alertes = s.absents.length + s.anomalies.length;
+  const alertes = s.absents.length + s.anomalies.length + s.retards.length;
 
   return (
     <div className="pile">
@@ -86,8 +88,9 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
           onClick={() => onAller("historique")}>
           <div className="kpi-pied"><span>{s.reattribuesMois} réattribution(s) ce mois-ci</span></div>
         </Kpi>
-        <Kpi teinte="rouge" icone="alerte" titre="Alertes" valeur={alertes} sous="absents, volés, anomalies">
-          <div className="kpi-pied"><span>{s.absents.length} absent(s) · {s.anomalies.length} anomalie(s) d’import</span></div>
+        <Kpi teinte="rouge" icone="alerte" titre="Alertes" valeur={alertes} sous="absents, volés, retards, anomalies"
+          onClick={s.retards.length ? () => onAller("historique") : undefined}>
+          <div className="kpi-pied"><span>{s.absents.length} absent(s) · {s.retards.length} retour(s) en retard · {s.anomalies.length} anomalie(s)</span></div>
         </Kpi>
       </section>
 
@@ -157,7 +160,8 @@ export default function TableauDeBord({ equipements, decharges, dateDuJour, onAl
                   <span className="pastille-ico"><Icone nom={e.constat && e.constat !== "Présent" ? "absent" : "alerte"} taille={16} /></span>
                   <span><b>{e.descriptif}</b><br /><span className="muted mono">{e.numeroFiche || "sans n° de fiche"}</span></span>
                   <span className="chip ex">
-                    {e.constat && e.constat !== "Présent" ? e.constat : e.anomalieImport ? "Anomalie import" : `${manquants(e).length} info(s)`}
+                    {enRetard(e.sortieEnCours) ? (e.sortieEnCours.type === "pret" ? "Prêt en retard" : "Réparation en retard")
+                      : e.constat && e.constat !== "Présent" ? e.constat : e.anomalieImport ? "Anomalie import" : `${manquants(e).length} info(s)`}
                   </span>
                 </li>
               ))}

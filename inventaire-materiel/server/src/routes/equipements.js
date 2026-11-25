@@ -4,6 +4,7 @@ import { CHAMPS_EQUIPEMENT, validerAttribution, validerReleve } from "../validat
 import { enregistrerAttribution } from "../attributions.js";
 import { controlerStructure } from "./classement.js";
 import { amorcerClassement } from "../classement.js";
+import { appliquerMouvement, validerMouvement } from "../mouvements.js";
 
 const router = Router();
 const LIBELLES_TYPE = { personnel: "Personnel NPSP", service: "Service NPSP", site: "Site sanitaire",
@@ -38,6 +39,10 @@ const SELECT = `SELECT ${Object.entries(COLONNES).map(([k, c]) => `e.${c} AS "${
        (SELECT a.du FROM attributions a WHERE a.equipement_id = e.id AND a.en_cours) AS "detenteurDepuis",
        (SELECT a.detenteur FROM attributions a WHERE a.equipement_id = e.id AND NOT a.en_cours
          ORDER BY a.au DESC NULLS LAST, a.id DESC LIMIT 1) AS "detenteurPrecedent",
+       (SELECT json_build_object('id', m.id, 'type', m.type, 'destinataire', m.destinataire, 'depuis', m.date_mouvement,
+               'retourPrevu', m.retour_prevu)
+          FROM mouvements m WHERE m.equipement_id = e.id AND m.clos_le IS NULL AND m.type IN ('pret', 'reparation')
+         ORDER BY m.id DESC LIMIT 1) AS "sortieEnCours",
        (SELECT string_agg(DISTINCT a.detenteur, ' | ') FROM attributions a
          WHERE a.equipement_id = e.id AND NOT a.en_cours) AS "anciensDetenteurs",
        ${SELECT_STRUCTURE}
@@ -46,6 +51,14 @@ const SELECT = `SELECT ${Object.entries(COLONNES).map(([k, c]) => `e.${c} AS "${
 const SELECT_ATTRIB = `a.id, a.equipement_id AS "equipementId", a.detenteur, a.direction, a.site, a.emplacement,
        a.du, a.au, a.en_cours AS "enCours", a.motif, a.commentaire, a.origine, a.saisi_par AS "saisiPar", a.cree_le AS "creeLe",
        a.type_beneficiaire AS "typeBeneficiaire", a.recu_par AS "recuPar"`;
+
+
+const SELECT_MOUV = `m.id, m.equipement_id AS "equipementId", m.type, m.date_mouvement AS "date", m.destinataire,
+       m.retour_prevu AS "retourPrevu", m.clos_le AS "closLe", m.motif, m.commentaire, m.piece, m.modifications,
+       m.saisi_par AS "saisiPar", m.cree_le AS "creeLe"`;
+// Journal : seules les modifications faites hors inventaire, réattribution et mouvement (déjà tracés ailleurs)
+const SELECT_JOURNAL = `j.id, j.equipement_id AS "equipementId", j.modifications, j.source, j.auteur, j.cree_le AS "creeLe"`;
+const JOURNAL_HORS_SUIVI = "COALESCE(j.source, '') NOT IN ('inventaire', 'reattribution', 'mouvement')";
 
 export const lire = async (db, id) => (await db.query(`${SELECT} WHERE e.id = $1`, [id])).rows[0] ?? null;
 
@@ -168,7 +181,7 @@ router.put("/releves/:id(\\d+)", async (req, res, next) => {
         return { statut: 403, message: "Seul l'agent qui a saisi ce relevé (ou un administrateur) peut en corriger la date." };
       await redaterReleve(client, rows[0], vers);
       return { statut: 200, equipementId: rows[0].equipement_id };
-    });
+    }, "inventaire");
     if (resultat.statut !== 200) return res.status(resultat.statut).json({ message: resultat.message });
     res.json(await lire(pool, resultat.equipementId));
   } catch (e) { next(e); }
@@ -194,7 +207,7 @@ router.post("/releves/redater", async (req, res, next) => {
         `SELECT * FROM releves_inventaire WHERE date_releve = $1 ${filtre} ORDER BY id FOR UPDATE`, valeurs);
       for (const r of rows) await redaterReleve(client, r, vers);
       return rows.length;
-    });
+    }, "inventaire");
     res.json({ modifies: n });
   } catch (e) { next(e); }
 });
@@ -262,9 +275,65 @@ router.post("/:id(\\d+)/attributions", async (req, res, next) => {
         [e.id, d.detenteur, d.direction, d.site, d.emplacement, d.type, d.structureId]
       );
       return { statut: 201 };
-    });
+    }, "reattribution");
     if (resultat.statut !== 201) return res.status(resultat.statut).json({ message: resultat.message });
     res.status(201).json(await lire(pool, req.params.id));
+  } catch (e) { next(e); }
+});
+
+// ---------- Mouvements et journal des modifications ----------
+
+// GET /api/equipements/mouvements — tous les mouvements, avec l'équipement concerné
+router.get("/mouvements", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ${SELECT_MOUV}, e.descriptif, e.numero_fiche AS "numeroFiche", e.site AS "siteActuel"
+         FROM mouvements m JOIN equipements e ON e.id = m.equipement_id
+        ORDER BY m.date_mouvement DESC, m.id DESC`);
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// GET /api/equipements/:id/mouvements
+router.get("/:id(\\d+)/mouvements", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ${SELECT_MOUV} FROM mouvements m WHERE m.equipement_id = $1 ORDER BY m.date_mouvement DESC, m.id DESC`,
+      [req.params.id]);
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// POST /api/equipements/:id/mouvements — enregistre un mouvement et met la fiche à jour
+router.post("/:id(\\d+)/mouvements", async (req, res, next) => {
+  const { erreur, donnees } = validerMouvement(req.body);
+  if (erreur) return res.status(400).json({ message: erreur });
+  try {
+    const r = await transaction(client => appliquerMouvement(client, req.params.id, donnees,
+      { nom: req.utilisateur.nom, id: req.utilisateur.id }), "mouvement");
+    if (r.statut !== 201) return res.status(r.statut).json({ message: r.message });
+    res.status(201).json(await lire(pool, req.params.id));
+  } catch (e) { next(e); }
+});
+
+// GET /api/equipements/journal — modifications faites en dehors des parcours tracés
+router.get("/journal", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ${SELECT_JOURNAL}, e.descriptif, e.numero_fiche AS "numeroFiche"
+         FROM journal_modifications j JOIN equipements e ON e.id = j.equipement_id
+        WHERE ${JOURNAL_HORS_SUIVI} ORDER BY j.cree_le DESC, j.id DESC`);
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+// GET /api/equipements/:id/journal — toutes les modifications de la fiche (y compris celles déjà tracées ailleurs)
+router.get("/:id(\\d+)/journal", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ${SELECT_JOURNAL}, ${JOURNAL_HORS_SUIVI} AS "horsSuivi"
+         FROM journal_modifications j WHERE j.equipement_id = $1 ORDER BY j.cree_le DESC, j.id DESC`, [req.params.id]);
+    res.json(rows);
   } catch (e) { next(e); }
 });
 
@@ -276,7 +345,7 @@ router.put("/:id(\\d+)/inventaire", async (req, res, next) => {
   const { erreur, donnees } = validerReleve(avecAgent(req));
   if (erreur) return res.status(400).json({ message: erreur });
   try {
-    const trouve = await transaction(client => appliquerReleve(client, req.params.id, donnees, req.utilisateur.id));
+    const trouve = await transaction(client => appliquerReleve(client, req.params.id, donnees, req.utilisateur.id), "inventaire");
     if (!trouve) return res.status(404).json({ message: "Équipement introuvable." });
     res.json(await lire(pool, req.params.id));
   } catch (e) { next(e); }
@@ -297,7 +366,7 @@ router.post("/", async (req, res, next) => {
       await appliquerReleve(client, rows[0].id, donnees, req.utilisateur.id);
       await amorcerClassement(client); // propose un type de bénéficiaire, à valider
       return rows[0].id;
-    });
+    }, "inventaire");
     res.status(201).json(await lire(pool, id));
   } catch (e) { next(e); }
 });

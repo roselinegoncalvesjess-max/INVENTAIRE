@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { aplatir, imeiOk, norm } from "../utils.js";
+import { codeEquipement } from "./Etiquettes.jsx";
 
 let compteur = 0;
-const articleVide = () => ({ cle: ++compteur, designation: "", quantite: 1, identifiant: "", imei: "", numeroSerie: "" });
+const articleVide = () => ({ cle: ++compteur, equipementId: null, designation: "", quantite: 1, identifiant: "", imei: "", numeroSerie: "" });
 
-export default function FormulaireDecharge({ decharge, decharges, structures, onEnregistrer, onAnnuler }) {
+export default function FormulaireDecharge({ decharge, decharges, equipements = [], structures, onEnregistrer, onAnnuler }) {
   const [form, setForm] = useState(() => ({
     dateRemise: decharge?.dateRemise || new Date().toISOString().slice(0, 10),
     structure: decharge?.structure || "",
@@ -24,6 +25,25 @@ export default function FormulaireDecharge({ decharge, decharges, structures, on
   const autres = useMemo(() => aplatir(decharges.filter(d => d.id !== decharge?.id)), [decharges, decharge]);
   const fonctions = useMemo(() => [...new Set(decharges.map(d => d.beneficiaireFonction).filter(Boolean))], [decharges]);
   const designations = useMemo(() => [...new Set(aplatir(decharges).map(a => a.designation))], [decharges]);
+
+  const [cherche, setCherche] = useState({}); // texte saisi dans « Équipement du parc », par ligne
+  const parId = useMemo(() => new Map(equipements.map(e => [e.id, e])), [equipements]);
+
+  // Choix d'un équipement du parc : la ligne est reliée à sa fiche et pré-remplie
+  const relier = (cle, texte) => {
+    setCherche(c => ({ ...c, [cle]: texte }));
+    const q = norm(texte.trim());
+    if (!q) return;
+    const trouves = equipements.filter(e => norm(codeEquipement(e)) === q || (e.referenceSerie && norm(e.referenceSerie) === q));
+    if (trouves.length !== 1) return;
+    const e = trouves[0];
+    const serie = e.referenceSerie || "";
+    const estImei = /^\d{15}$/.test(serie) && imeiOk(serie);
+    setArticles(list => list.map(a => (a.cle === cle ? { ...a, equipementId: e.id, designation: e.descriptif || a.designation, quantite: 1,
+      identifiant: e.numeroFiche || e.identifiant || "", imei: estImei ? serie : "", numeroSerie: estImei ? "" : serie } : a)));
+    setCherche(c => ({ ...c, [cle]: "" }));
+  };
+  const delier = cle => setArticles(list => list.map(a => (a.cle === cle ? { ...a, equipementId: null } : a)));
 
   const champ = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const majArticle = (cle, k, v) => setArticles(list => list.map(a => (a.cle === cle ? { ...a, [k]: v } : a)));
@@ -98,8 +118,22 @@ export default function FormulaireDecharge({ decharge, decharges, structures, on
         <div className="items">
           {articles.map(a => {
             const msgs = alertes(a);
+            const lie = a.equipementId ? parId.get(a.equipementId) : null;
+            const autreDetenteur = lie && lie.utilisateur && form.beneficiaireNom.trim() &&
+              norm(lie.utilisateur) !== norm(form.beneficiaireNom) ? lie.utilisateur : null;
             return (
               <div className="item" key={a.cle}>
+                {lie ? (
+                  <div className="relie">
+                    <span className="chip info">Relié au parc</span>
+                    <span><b>{lie.descriptif}</b> <span className="mono muted">{codeEquipement(lie)}</span></span>
+                    <button type="button" className="btn petit" onClick={() => delier(a.cle)}>Délier</button>
+                  </div>
+                ) : (
+                  <label className="field f-parc"><span className="label">Équipement du parc (n° de fiche, code étiquette ou n° de série)</span>
+                    <input list="dlParc" value={cherche[a.cle] || ""} onChange={e => relier(a.cle, e.target.value)}
+                      placeholder="Choisir ou scanner : la ligne sera inscrite dans la chronologie de l’équipement" /></label>
+                )}
                 <label className="field f-des"><span className="label">Désignation *</span>
                   <input list="dlDes" value={a.designation} onChange={e => majArticle(a.cle, "designation", e.target.value)} placeholder="ex. Ordinateur portable HP ProBook 450" /></label>
                 <label className="field"><span className="label">Qté *</span>
@@ -114,6 +148,7 @@ export default function FormulaireDecharge({ decharge, decharges, structures, on
                 <button type="button" className="btn ghost rm" title="Retirer cet équipement" aria-label="Retirer cet équipement"
                   onClick={() => retirer(a.cle)} disabled={articles.length === 1}>✕</button>
                 {msgs.length > 0 && <div className="hint">{msgs.join(" ")}</div>}
+                {autreDetenteur && <div className="info-relie">Détenteur actuel au registre : {autreDetenteur}. Pensez à réattribuer l’appareil depuis sa fiche si la remise change de détenteur.</div>}
               </div>
             );
           })}
@@ -130,6 +165,9 @@ export default function FormulaireDecharge({ decharge, decharges, structures, on
 
       <datalist id="dlStruct">{structures.map(s => <option key={s} value={s} />)}</datalist>
       <datalist id="dlFct">{fonctions.map(s => <option key={s} value={s} />)}</datalist>
+      <datalist id="dlParc">{equipements.filter(e => e.statut !== "Réformé").map(e => (
+        <option key={e.id} value={codeEquipement(e)}>{[e.descriptif, e.referenceSerie, e.utilisateur].filter(Boolean).join(" · ")}</option>
+      ))}</datalist>
       <datalist id="dlDes">{designations.map(s => <option key={s} value={s} />)}</datalist>
     </form>
   );

@@ -23,7 +23,8 @@ const SELECT_DECHARGES = `
              'quantite', a.quantite,
              'identifiant', a.identifiant,
              'imei', a.imei,
-             'numeroSerie', a.numero_serie
+             'numeroSerie', a.numero_serie,
+             'equipementId', a.equipement_id
            ) ORDER BY a.id) FILTER (WHERE a.id IS NOT NULL),
            '[]'
          ) AS articles
@@ -35,12 +36,13 @@ async function lireDecharge(db, id) {
   return rows[0] ?? null;
 }
 
+// Les lignes reliées à un équipement du parc apparaissent dans sa chronologie
 async function insererArticles(client, dechargeId, articles) {
   for (const a of articles) {
     await client.query(
-      `INSERT INTO articles (decharge_id, designation, quantite, identifiant, imei, numero_serie)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [dechargeId, a.designation, a.quantite, a.identifiant, a.imei, a.numeroSerie]
+      `INSERT INTO articles (decharge_id, designation, quantite, identifiant, imei, numero_serie, equipement_id)
+       VALUES ($1, $2, $3, $4, $5, $6, (SELECT id FROM equipements WHERE id = $7))`,
+      [dechargeId, a.designation, a.quantite, a.identifiant, a.imei, a.numeroSerie, a.equipementId]
     );
   }
 }

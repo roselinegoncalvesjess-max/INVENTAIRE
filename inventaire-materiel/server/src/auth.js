@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import { pool } from "./db.js";
+import { contexte, pool } from "./db.js";
 
 const scrypt = promisify(scryptCb);
 const COOKIE = "inventaire_session";
@@ -80,7 +80,7 @@ export async function exigerConnexion(req, res, next) {
     // Un mot de passe provisoire doit être changé avant toute autre action
     if (rows[0].doit_changer && !req.originalUrl.startsWith("/api/auth/"))
       return res.status(403).json({ message: "Changez d'abord votre mot de passe provisoire." });
-    next();
+    contexte.run(rows[0], next); // auteur des modifications pour le journal
   } catch (e) { next(e); }
 }
 

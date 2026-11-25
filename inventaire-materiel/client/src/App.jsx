@@ -127,7 +127,7 @@ function Application({ utilisateur, setUtilisateur }) {
       dateRemise: data.date,
       structure: structurel ? [e.siteSanitaire, e.district, e.region].filter(Boolean).join(" / ") || e.structureNom : data.direction || data.site || "",
       beneficiaireNom: structurel ? data.recuPar || e.structureNom : data.detenteur,
-      articles: [{ designation: e.descriptif || "", quantite: 1, identifiant: e.numeroFiche || e.identifiant || "",
+      articles: [{ equipementId: e.id, designation: e.descriptif || "", quantite: 1, identifiant: e.numeroFiche || e.identifiant || "",
         imei: estImei ? serie : "", numeroSerie: estImei ? "" : serie }]
     });
   };
@@ -222,8 +222,9 @@ function Application({ utilisateur, setUtilisateur }) {
               onAller={aller} onOuvrirEquipement={ouvrirEquipement} />
           )}
           {page === "equipements" && (detail ? (
-            <FicheEquipement equipement={detail} equipements={equipements} versionReleves={versionReleves}
-              onRetour={() => setDetailId(null)} onConstat={apresConstat} onReattribue={apresReattribution} peutModifier={peutModifier} agent={utilisateur.nom} moi={utilisateur} />
+            <FicheEquipement equipement={detail} equipements={equipements} decharges={decharges} versionReleves={versionReleves}
+              onRetour={() => setDetailId(null)} onConstat={apresConstat} onReattribue={apresReattribution} onOuvrirDecharge={setFicheId}
+              peutModifier={peutModifier} agent={utilisateur.nom} moi={utilisateur} />
           ) : (
             <Equipements equipements={equipements} recherche={recherche} setRecherche={setRecherche}
               onOuvrir={ouvrirEquipement} />
@@ -233,7 +234,7 @@ function Application({ utilisateur, setUtilisateur }) {
               peutModifier={peutModifier} agent={utilisateur.nom} moi={utilisateur} onOuvrirEquipement={ouvrirEquipement} />
           )}
           {page === "historique" && (
-            <Historique version={versionReleves} decharges={decharges} onOuvrirEquipement={ouvrirEquipement}
+            <Historique version={versionReleves} decharges={decharges} equipements={equipements} onOuvrirEquipement={ouvrirEquipement}
               onOuvrirDecharge={setFicheId} />
           )}
           {page === "decharges" && (
@@ -254,6 +255,7 @@ function Application({ utilisateur, setUtilisateur }) {
               key={enEdition?.id ?? "nouvelle"}
               decharge={enEdition}
               decharges={decharges}
+              equipements={equipements}
               structures={structures}
               onEnregistrer={enregistrerDecharge}
               onAnnuler={() => { const brouillon = enEdition && !enEdition.id; setEnEdition(null); aller("decharges"); if (brouillon) setToast("Décharge non créée : la réattribution reste enregistrée"); }}

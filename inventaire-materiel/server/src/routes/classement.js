@@ -35,7 +35,7 @@ router.put("/", async (req, res, next) => {
         "UPDATE attributions SET type_beneficiaire = $2, structure_id = $3 WHERE equipement_id = ANY($1::int[]) AND en_cours",
         [ids, type, structureId]);
       return r.rowCount;
-    });
+    }, "classement");
     res.json({ modifies: n });
   } catch (e) { next(e); }
 });
@@ -62,7 +62,7 @@ router.post("/fusionner", async (req, res, next) => {
         "UPDATE equipements SET utilisateur = $1, modifie_le = now() WHERE utilisateur = ANY($2::text[])", [nom, noms]);
       await client.query("UPDATE attributions SET detenteur = $1 WHERE detenteur = ANY($2::text[])", [nom, noms]);
       return r.rowCount;
-    });
+    }, "fusion");
     res.json({ modifies: n });
   } catch (e) { next(e); }
 });

@@ -81,10 +81,10 @@ const valeursDe = (equipements, k) =>
   [...new Set(equipements.map(x => x[k]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "fr"));
 
 // Fenêtre « Réattribuer l'équipement »
-export function FormReattribution({ equipement: e, equipements, depuis, onEnregistrer, onFermer }) {
+export function FormReattribution({ equipement: e, equipements, depuis, motifInitial = "", onEnregistrer, onFermer }) {
   const [f, setF] = useState(() => ({
     detenteur: "", direction: e.direction || "", site: e.site || "", emplacement: e.emplacement || "",
-    date: aujourdhui(), motif: "", commentaire: "", decharge: true,
+    date: aujourdhui(), motif: motifInitial, commentaire: "", decharge: true,
     typeBeneficiaire: e.typeBeneficiaire && e.typeBeneficiaire !== "non_affecte" ? e.typeBeneficiaire : "personnel",
     structureId: null, recuPar: ""
   }));

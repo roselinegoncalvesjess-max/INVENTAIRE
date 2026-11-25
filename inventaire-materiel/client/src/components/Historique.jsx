@@ -3,6 +3,7 @@ import { apiEquipements } from "../api.js";
 import { aujourdhui, fmtDate, norm } from "../utils.js";
 import Icone from "./Icone.jsx";
 import { PageTete, Pagination } from "./Commun.jsx";
+import { dateLocale, decrireModifications, enRetard, libelleSortie, TYPES_MOUVEMENT } from "./Mouvements.jsx";
 
 const PAR_PAGE = 30;
 const TYPES = {
@@ -10,8 +11,15 @@ const TYPES = {
   absence: { libelle: "Absence", classe: "dup", icone: "absent" },
   completion: { libelle: "Complétion", classe: "info", icone: "inventaire" },
   remise: { libelle: "Remise", classe: "violet", icone: "remis" },
-  reattribution: { libelle: "Réattribution", classe: "ex", icone: "utilisateur" }
+  reattribution: { libelle: "Réattribution", classe: "ex", icone: "utilisateur" },
+  deplacement: { libelle: "Déplacement", classe: "info", icone: "lieu" },
+  reparation: { libelle: "Réparation", classe: "ex", icone: "alerte" },
+  pret: { libelle: "Prêt", classe: "violet", icone: "utilisateur" },
+  incident: { libelle: "Panne, perte, vol", classe: "dup", icone: "absent" },
+  statut: { libelle: "Remise en service / réforme", classe: "", icone: "ok" },
+  modification: { libelle: "Modification de fiche", classe: "", icone: "info" }
 };
+const SOURCES = { classement: "Classement du bénéficiaire", fusion: "Regroupement de noms en double" };
 
 const decaler = jours => {
   const d = new Date(); d.setDate(d.getDate() - jours);
@@ -19,9 +27,11 @@ const decaler = jours => {
 };
 
 // Tous les mouvements du parc : constats d'inventaire et remises de matériel (décharges)
-export default function Historique({ version, decharges, onOuvrirEquipement, onOuvrirDecharge }) {
+export default function Historique({ version, decharges, equipements = [], onOuvrirEquipement, onOuvrirDecharge }) {
   const [releves, setReleves] = useState([]);
   const [attributions, setAttributions] = useState([]);
+  const [autres, setAutres] = useState([]);
+  const [journal, setJournal] = useState([]);
   const [etat, setEtat] = useState("chargement");
   const [recherche, setRecherche] = useState("");
   const [type, setType] = useState("");
@@ -31,8 +41,8 @@ export default function Historique({ version, decharges, onOuvrirEquipement, onO
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    Promise.all([apiEquipements.tousReleves(), apiEquipements.toutesAttributions()])
-      .then(([r, a]) => { setReleves(r); setAttributions(a); setEtat("ok"); })
+    Promise.all([apiEquipements.tousReleves(), apiEquipements.toutesAttributions(), apiEquipements.tousMouvements(), apiEquipements.toutJournal()])
+      .then(([r, a, m, j]) => { setReleves(r); setAttributions(a); setAutres(m); setJournal(j); setEtat("ok"); })
       .catch(() => setEtat("erreur"));
   }, [version]);
 
@@ -58,8 +68,27 @@ export default function Historique({ version, decharges, onOuvrirEquipement, onO
       lieu: a.direction || a.site, par: a.saisiPar || (a.origine === "import" ? "Fichier Excel" : ""),
       note: [a.motif, a.commentaire].filter(Boolean).join(" · ")
     }));
-    return [...deReleves, ...deDecharges, ...deAttributions].sort((a, b) => b.date.localeCompare(a.date) || b.cle.localeCompare(a.cle));
-  }, [releves, decharges, attributions]);
+    const deMouvements = autres.map(m => {
+      const t = TYPES_MOUVEMENT[m.type] || { libelle: m.type, groupe: "modification" };
+      return {
+        cle: "m" + m.id, date: m.date, type: t.groupe,
+        titre: m.descriptif, sousTitre: m.numeroFiche, equipementId: m.equipementId,
+        detail: t.libelle + (m.destinataire ? ` — ${m.destinataire}` : "") + (t.sortie && !m.closLe ? (m.retourPrevu && m.retourPrevu < aujourdhui() ? " (en retard)" : " (en cours)") : ""),
+        lieu: m.modifications?.site?.apres || m.siteActuel, par: m.saisiPar || "",
+        note: [m.motif, m.piece && `pièce : ${m.piece}`, m.commentaire, decrireModifications(m.modifications)].filter(Boolean).join(" · ")
+      };
+    });
+    const deJournal = journal.map(j => ({
+      cle: "j" + j.id, date: dateLocale(j.creeLe), type: "modification",
+      titre: j.descriptif, sousTitre: j.numeroFiche, equipementId: j.equipementId,
+      detail: SOURCES[j.source] || "Modification de la fiche", lieu: "", par: j.auteur || "Application",
+      note: decrireModifications(j.modifications)
+    }));
+    return [...deReleves, ...deDecharges, ...deAttributions, ...deMouvements, ...deJournal]
+      .sort((a, b) => b.date.localeCompare(a.date) || b.cle.localeCompare(a.cle));
+  }, [releves, decharges, attributions, autres, journal]);
+  const sorties = equipements.filter(e => e.sortieEnCours);
+  const retards = sorties.filter(e => enRetard(e.sortieEnCours));
 
   const agents = useMemo(() => [...new Set(mouvements.map(m => m.par).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [mouvements]);
 
@@ -77,7 +106,19 @@ export default function Historique({ version, decharges, onOuvrirEquipement, onO
 
   return (
     <div className="pile">
-      <PageTete icone="historique" titre="Historique" sous="Tous les mouvements du parc : constats d’inventaire, réattributions et remises de matériel" />
+      <PageTete icone="historique" titre="Historique" sous="Tous les mouvements du parc : inventaires, réattributions, remises, déplacements, prêts, réparations et modifications de fiche" />
+
+      {retards.length > 0 && (
+        <div className="notice">
+          <b>{retards.length} retour(s) en retard :</b>
+          <ul className="ecarts">
+            {retards.map(e => (
+              <li key={e.id}><button className="lien-btn lien" onClick={() => onOuvrirEquipement(e.id)}>{e.descriptif}</button>
+                {e.numeroFiche && <span className="mono"> ({e.numeroFiche})</span>} — {libelleSortie(e.sortieEnCours)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <section className="kpis">
         <Carte titre="Total" valeur={mouvements.length} sous="tous les mouvements" icone="historique" teinte="bleu" />
@@ -85,6 +126,9 @@ export default function Historique({ version, decharges, onOuvrirEquipement, onO
         <Carte titre="Absences" valeur={compte("absence")} sous="absents, volés ou perdus" icone="absent" teinte="rouge" />
         <Carte titre="Remises" valeur={compte("remise")} sous="décharges de matériel" icone="remis" teinte="violet" />
         <Carte titre="Réattributions" valeur={compte("reattribution")} sous="changements de détenteur" icone="utilisateur" teinte="orange" />
+        <Carte titre="Autres mouvements" valeur={["deplacement", "reparation", "pret", "incident", "statut", "modification"].reduce((t, k) => t + compte(k), 0)}
+          sous="déplacements, prêts, réparations, fiches" icone="lieu" teinte="bleu" />
+        <Carte titre="Sorties en cours" valeur={sorties.length} sous={retards.length ? `dont ${retards.length} en retard` : "prêts et réparations"} icone="alerte" teinte={retards.length ? "rouge" : "violet"} />
       </section>
 
       <section className="filtres">

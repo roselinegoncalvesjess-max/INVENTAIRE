@@ -45,6 +45,11 @@ export const apiEquipements = {
   attributions: id => requete("GET", `${EQ}/${id}/attributions`),
   toutesAttributions: () => requete("GET", `${EQ}/attributions`),
   reattribuer: (id, data) => requete("POST", `${EQ}/${id}/attributions`, data),
+  mouvements: id => requete("GET", `${EQ}/${id}/mouvements`),
+  tousMouvements: () => requete("GET", `${EQ}/mouvements`),
+  enregistrerMouvement: (id, data) => requete("POST", `${EQ}/${id}/mouvements`, data),
+  journal: id => requete("GET", `${EQ}/${id}/journal`),
+  toutJournal: () => requete("GET", `${EQ}/journal`),
   urlExport: `${EQ}/export`
 };
 
