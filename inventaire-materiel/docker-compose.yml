@@ -38,8 +38,12 @@ services:
       PGUSER: inventaire_app
       PGPASSWORD: ${PGPASSWORD}
       PORT: "3001"
+      # 1 derrière un proxy HTTPS (VPS) : le cookie de session n'est envoyé qu'en HTTPS
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
     ports:
-      - "${PORT_APP:-3001}:3001"
+      # Sur un VPS, ADRESSE_APP=127.0.0.1 : seul Nginx (même machine) joint l'application.
+      # Indispensable : un port publié par Docker contourne le pare-feu UFW.
+      - "${ADRESSE_APP:-0.0.0.0}:${PORT_APP:-3001}:3001"
 
 volumes:
   donnees:
