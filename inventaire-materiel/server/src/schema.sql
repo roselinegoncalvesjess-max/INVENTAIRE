@@ -184,3 +184,89 @@ ALTER TABLE equipements  ADD COLUMN IF NOT EXISTS classement_raison TEXT;
 ALTER TABLE attributions ADD COLUMN IF NOT EXISTS type_beneficiaire VARCHAR(20);
 ALTER TABLE attributions ADD COLUMN IF NOT EXISTS structure_id      INTEGER REFERENCES structures_sanitaires(id) ON DELETE SET NULL;
 ALTER TABLE attributions ADD COLUMN IF NOT EXISTS recu_par          VARCHAR(150);   -- personne qui reçoit pour une structure
+
+-- ---------- Mouvements : tout ce qui arrive à un équipement en dehors de l'inventaire ----------
+-- déplacement, réparation, prêt, panne, perte/vol, remise en service, réforme, correction de fiche.
+-- Les changements de détenteur restent dans « attributions ».
+-- Une sortie (prêt, réparation) reste ouverte tant que clos_le est vide.
+CREATE TABLE IF NOT EXISTS mouvements (
+    id              SERIAL PRIMARY KEY,
+    equipement_id   INTEGER      NOT NULL REFERENCES equipements(id) ON DELETE CASCADE,
+    type            VARCHAR(30)  NOT NULL,
+    date_mouvement  DATE         NOT NULL,
+    destinataire    VARCHAR(150),                         -- emprunteur, prestataire de réparation
+    retour_prevu    DATE,
+    clos_le         DATE,
+    clos_par_id     INTEGER      REFERENCES mouvements(id) ON DELETE SET NULL,
+    motif           VARCHAR(150),
+    commentaire     TEXT,
+    piece           VARCHAR(120),                         -- n° de décharge, PV, bon de sortie…
+    modifications   JSONB        NOT NULL DEFAULT '{}',   -- { champ: { avant, apres } }
+    saisi_par       VARCHAR(150),
+    utilisateur_id  INTEGER      REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_mouv_equip ON mouvements(equipement_id);
+CREATE INDEX IF NOT EXISTS idx_mouv_ouverts ON mouvements(equipement_id) WHERE clos_le IS NULL AND type IN ('pret', 'reparation');
+
+-- ---------- Journal automatique : toute modification d'une fiche équipement ----------
+-- Rempli par un déclencheur : aucune modification ne peut lui échapper, quel que soit l'écran.
+-- L'auteur et l'origine sont transmis par le serveur (set_config dans la transaction).
+CREATE TABLE IF NOT EXISTS journal_modifications (
+    id              SERIAL PRIMARY KEY,
+    equipement_id   INTEGER      NOT NULL REFERENCES equipements(id) ON DELETE CASCADE,
+    modifications   JSONB        NOT NULL,                -- { colonne: { avant, apres } }
+    source          VARCHAR(30),                          -- inventaire | reattribution | mouvement | classement | fusion
+    auteur          VARCHAR(150),
+    utilisateur_id  INTEGER      REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_journal_equip ON journal_modifications(equipement_id);
+
+CREATE OR REPLACE FUNCTION journaliser_equipement() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    avant jsonb := to_jsonb(OLD);
+    apres jsonb := to_jsonb(NEW);
+    diff  jsonb := '{}';
+    k     text;
+BEGIN
+    FOR k IN SELECT jsonb_object_keys(apres) LOOP
+        CONTINUE WHEN k IN ('modifie_le', 'cree_le', 'inventorie_le', 'inventorie_par', 'constat',
+                            'classement_raison', 'classement_valide');
+        IF avant -> k IS DISTINCT FROM apres -> k THEN
+            diff := diff || jsonb_build_object(k, jsonb_build_object('avant', avant -> k, 'apres', apres -> k));
+        END IF;
+    END LOOP;
+    IF diff <> '{}' THEN
+        INSERT INTO journal_modifications (equipement_id, modifications, source, auteur, utilisateur_id)
+        VALUES (NEW.id, diff,
+                NULLIF(current_setting('parcit.source', true), ''),
+                NULLIF(current_setting('parcit.auteur', true), ''),
+                NULLIF(current_setting('parcit.utilisateur_id', true), '')::int);
+    END IF;
+    RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_journal_equipement ON equipements;
+CREATE TRIGGER trg_journal_equipement AFTER UPDATE ON equipements
+    FOR EACH ROW EXECUTE FUNCTION journaliser_equipement();
+
+-- ---------- Décharges reliées aux équipements du parc ----------
+-- À la création de la colonne (une seule fois) : rattachement automatique des lignes déjà saisies
+-- quand l'IMEI, le n° de série ou l'identifiant désigne un seul équipement du registre.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'articles' AND column_name = 'equipement_id') THEN
+        ALTER TABLE articles ADD COLUMN equipement_id INTEGER REFERENCES equipements(id) ON DELETE SET NULL;
+        UPDATE articles a SET equipement_id = m.eid
+          FROM (SELECT a2.id AS aid, MIN(e.id) AS eid
+                  FROM articles a2 JOIN equipements e ON
+                       (a2.imei IS NOT NULL AND upper(btrim(e.reference_serie)) = a2.imei)
+                    OR (btrim(COALESCE(a2.numero_serie, '')) <> '' AND upper(btrim(e.reference_serie)) = upper(btrim(a2.numero_serie)))
+                    OR (btrim(COALESCE(a2.identifiant, '')) <> '' AND (upper(btrim(e.numero_fiche)) = upper(btrim(a2.identifiant))
+                                                                   OR upper(btrim(e.identifiant)) = upper(btrim(a2.identifiant))))
+                 GROUP BY a2.id HAVING COUNT(DISTINCT e.id) = 1) m
+         WHERE a.id = m.aid;
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_articles_equip ON articles(equipement_id);

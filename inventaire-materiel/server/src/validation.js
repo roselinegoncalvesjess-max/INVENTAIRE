@@ -37,7 +37,8 @@ export function validerDecharge(body = {}) {
       quantite: Math.max(1, parseInt(a.quantite, 10) || 1),
       identifiant: optionnel(a.identifiant),
       imei,
-      numeroSerie: optionnel(a.numeroSerie)
+      numeroSerie: optionnel(a.numeroSerie),
+      equipementId: Number.isInteger(Number(a.equipementId)) && Number(a.equipementId) > 0 ? Number(a.equipementId) : null
     });
   }
 
@@ -57,7 +58,7 @@ export function validerDecharge(body = {}) {
 
 export const CONSTATS = ["Présent", "Absent", "Volé ou perdu"];
 export const ETATS = ["Bon état", "Usagé", "Défaillant", "Hors d'usage"];
-export const STATUTS = ["En service", "Pas encore en service", "Inactif", "Hors service"];
+export const STATUTS = ["En service", "Pas encore en service", "Inactif", "En réparation", "Hors service", "Volé ou perdu", "Réformé"];
 
 // Champs du registre que l'agent peut compléter ou corriger : nom API → [colonne SQL, genre]
 export const CHAMPS_EQUIPEMENT = {

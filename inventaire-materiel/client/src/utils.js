@@ -45,7 +45,7 @@ export function doublons(items) {
 
 export const CONSTATS = ["Présent", "Absent", "Volé ou perdu"];
 export const ETATS = ["Bon état", "Usagé", "Défaillant", "Hors d'usage"];
-export const STATUTS = ["En service", "Pas encore en service", "Inactif", "Hors service"];
+export const STATUTS = ["En service", "Pas encore en service", "Inactif", "En réparation", "Hors service", "Volé ou perdu", "Réformé"];
 
 // Informations attendues pour chaque équipement du registre
 export const CHAMPS_REQUIS = {
@@ -96,7 +96,10 @@ export const STATUT_STYLE = {
   "En service": { couleur: "var(--st-bon)", classe: "ok" },
   "Pas encore en service": { couleur: "var(--st-neutre)", classe: "info" },
   "Inactif": { couleur: "var(--st-attention)", classe: "ex" },
+  "En réparation": { couleur: "var(--st-attention)", classe: "ex" },
   "Hors service": { couleur: "var(--st-critique)", classe: "dup" },
+  "Volé ou perdu": { couleur: "var(--st-critique)", classe: "dup" },
+  "Réformé": { couleur: "var(--st-vide)", classe: "" },
   "Non renseigné": { couleur: "var(--st-vide)", classe: "" }
 };
 

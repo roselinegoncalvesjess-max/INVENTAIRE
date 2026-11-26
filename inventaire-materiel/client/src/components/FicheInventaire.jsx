@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiEquipements } from "../api.js";
+import { enRetard, libelleSortie } from "./Mouvements.jsx";
 import { lireDateSeance, aujourdhui, CHAMPS_REQUIS, CONSTATS, ETATS, fmtDate, fmtMontant, manquants, norm, STATUTS } from "../utils.js";
 
 // Champs du registre modifiables dans la fiche
@@ -51,6 +52,12 @@ export default function FicheInventaire({ equipement: e, equipements, aSuivant, 
   const fichePrise = autre("numeroFiche");
   const seriePrise = autre("referenceSerie");
 
+  // Contrôle : écart entre le dernier état connu (mouvements, réattributions) et ce qui est constaté
+  const ecarts = nouveau ? [] : [["utilisateur", "Détenteur"], ["site", "Site"], ["direction", "Direction"], ["emplacement", "Emplacement"]]
+    .filter(([k]) => norm(champs[k]).trim() !== norm(e[k]).trim())
+    .map(([k, l]) => `${l} : attendu « ${e[k] || "vide"} », constaté « ${champs[k].trim() || "vide"} »`);
+  const sortie = e?.sortieEnCours;
+
   const majChamp = k => ev => setChamps(c => ({ ...c, [k]: ev.target.value }));
   const majReleve = k => ev => setReleve(r => ({ ...r, [k]: ev.target.value }));
 
@@ -101,6 +108,13 @@ export default function FicheInventaire({ equipement: e, equipements, aSuivant, 
         </div>
 
         {e?.anomalieImport && <p className="notice" style={{ margin: 0 }}><b>Anomalie à l’import :</b> {e.anomalieImport}</p>}
+        {sortie && (
+          <p className={"notice" + (enRetard(sortie) ? "" : " info")} style={{ margin: 0 }}>
+            <b>{enRetard(sortie) ? "Retour en retard : " : "Sortie en cours : "}</b>{libelleSortie(sortie)}.
+            {releve.constat === "Présent" ? " L’appareil est pourtant présent : pensez à enregistrer son retour depuis sa fiche." : " Son absence est donc attendue."}
+          </p>
+        )}
+        {e?.statut === "Réformé" && <p className="notice" style={{ margin: 0 }}>Cet équipement est réformé (sorti du parc).</p>}
 
         {!nouveau && (
           <div className="kv">
@@ -201,6 +215,13 @@ export default function FicheInventaire({ equipement: e, equipements, aSuivant, 
               ))}
             </ul>
           </fieldset>
+        )}
+
+        {ecarts.length > 0 && (
+          <div className="notice" style={{ margin: 0 }}>
+            <b>Écart avec le dernier mouvement connu</b> — l’enregistrement mettra la fiche à jour et le tracera :
+            <ul className="ecarts">{ecarts.map(x => <li key={x}>{x}</li>)}</ul>
+          </div>
         )}
 
         {erreur && <p className="notice" style={{ margin: 0 }}>{erreur}</p>}

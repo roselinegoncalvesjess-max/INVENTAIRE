@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiEquipements } from "../api.js";
 import { aujourdhui, fmtDate, fmtMontant, manquants, STATUT_STYLE } from "../utils.js";
 import Icone from "./Icone.jsx";
@@ -7,23 +7,19 @@ import FicheInventaire from "./FicheInventaire.jsx";
 import Etiquettes from "./Etiquettes.jsx";
 import { FormReattribution, PanneauDetenteurs } from "./Detenteurs.jsx";
 import { FenetreClasser, PastilleType } from "./Beneficiaires.jsx";
-import { DateReleve } from "./DatesInventaire.jsx";
+import { Chronologie, construireChronologie, enRetard, FormMouvement, libelleSortie } from "./Mouvements.jsx";
 import { apiClassement } from "../api.js";
 
-const LIBELLES = {
-  numeroFiche: "N° de fiche", identifiant: "Identifiant", type: "Type", categorie: "Catégorie", descriptif: "Descriptif",
-  referenceSerie: "N° de série", accessoires: "Accessoires", valeurAcquisition: "Valeur d'acquisition",
-  dateDebut: "Date d'acquisition", utilisateur: "Utilisateur", site: "Site", direction: "Direction", emplacement: "Emplacement",
-  statut: "Statut", observation: "Observation"
-};
-
 // Page détail d'un équipement du registre
-export default function FicheEquipement({ equipement: e, equipements, versionReleves, onRetour, onConstat, onReattribue, peutModifier, agent, moi }) {
+export default function FicheEquipement({ equipement: e, equipements, decharges, versionReleves, onRetour, onConstat, onReattribue, onOuvrirDecharge, peutModifier, agent, moi }) {
   const [releves, setReleves] = useState([]);
   const [constat, setConstat] = useState(false);
   const [copie, setCopie] = useState("");
   const [attributions, setAttributions] = useState([]);
-  const [reattribuer, setReattribuer] = useState(false);
+  const [reattribuer, setReattribuer] = useState(false); // false, ou motif proposé ("" = au choix)
+  const [mouvements, setMouvements] = useState([]);
+  const [journal, setJournal] = useState([]);
+  const [mouvement, setMouvement] = useState(false);
   const [classer, setClasser] = useState(false);
   const validerClassement = async () => {
     await apiClassement.classer([e.id], e.typeBeneficiaire, e.structureId);
@@ -33,7 +29,12 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
   useEffect(() => {
     apiEquipements.releves(e.id).then(setReleves).catch(() => setReleves([]));
     apiEquipements.attributions(e.id).then(setAttributions).catch(() => setAttributions([]));
+    apiEquipements.mouvements(e.id).then(setMouvements).catch(() => setMouvements([]));
+    apiEquipements.journal(e.id).then(setJournal).catch(() => setJournal([]));
   }, [e.id, versionReleves]);
+  const evenements = useMemo(() => construireChronologie({ releves, attributions, mouvements, journal, decharges, equipementId: e.id }),
+    [releves, attributions, mouvements, journal, decharges, e.id]);
+  const sortie = e.sortieEnCours;
 
   const manque = manquants(e);
   const style = STATUT_STYLE[e.statut || "Non renseigné"];
@@ -53,6 +54,12 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
     const saved = await apiEquipements.reattribuer(e.id, data);
     setReattribuer(false);
     await onReattribue(saved, data, decharge);
+  };
+
+  const enregistrerMouvement = async data => {
+    const saved = await apiEquipements.enregistrerMouvement(e.id, data);
+    setMouvement(false);
+    await onConstat(`${saved.numeroFiche || saved.descriptif} : mouvement enregistré`);
   };
 
   const Valeur = ({ v, mono, copiable }) => (
@@ -94,12 +101,19 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
           </div>
         </div>
         <div className="toolbar">
-          {peutModifier && <button className="btn" onClick={() => setReattribuer(true)}><Icone nom="utilisateur" taille={16} />Réattribuer</button>}
-          {peutModifier && <button className="btn primary" onClick={() => setConstat(true)}><Icone nom="inventaire" taille={16} />Saisir un constat</button>}
+          {peutModifier && <button className="btn primary" onClick={() => setMouvement(true)}><Icone nom="historique" taille={16} />Enregistrer un mouvement</button>}
+          {peutModifier && e.statut !== "Réformé" && <button className="btn" onClick={() => setReattribuer("")}><Icone nom="utilisateur" taille={16} />Réattribuer</button>}
+          {peutModifier && <button className="btn" onClick={() => setConstat(true)}><Icone nom="inventaire" taille={16} />Saisir un constat</button>}
         </div>
       </div>
 
       {e.anomalieImport && <p className="notice" style={{ margin: 0 }}><b>Anomalie à l’import :</b> {e.anomalieImport}</p>}
+      {sortie && (
+        <div className={"notice ligne-actions" + (enRetard(sortie) ? "" : " info")}>
+          <span><b>{enRetard(sortie) ? "Retour en retard : " : "Sortie en cours : "}</b>{libelleSortie(sortie)}</span>
+          {peutModifier && <button className="btn petit" onClick={() => setMouvement(true)}>Enregistrer le retour</button>}
+        </div>
+      )}
       {!e.classementValide && e.typeBeneficiaire && (
         <div className="notice info ligne-actions">
           <span><b>Classement proposé :</b> <PastilleType type={e.typeBeneficiaire} />{e.structureNom && <> {e.structureNom}</>}
@@ -128,7 +142,7 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
           </Panneau>
 
           <PanneauDetenteurs equipement={e} attributions={attributions} peutModifier={peutModifier}
-            onReattribuer={() => setReattribuer(true)} />
+            onReattribuer={() => setReattribuer("")} />
 
           <Panneau icone="lieu" titre="Affectation">
             <dl className="infos">
@@ -174,23 +188,9 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
             ) : <p className="muted" style={{ margin: 0 }}>La fiche est complète.</p>}
           </Panneau>
 
-          <Panneau icone="historique" titre="Historique">
-            {releves.length ? (
-              <ol className="frise">
-                {releves.map(h => (
-                  <li key={h.id}>
-                    <DateReleve releve={h} moi={moi} onModifie={onConstat} />
-                    <span><b>{h.constat}</b>{h.etatPhysique && ` · ${h.etatPhysique}`} — {h.agent}</span>
-                    {h.commentaire && <i className="muted">{h.commentaire}</i>}
-                    {Object.keys(h.modifications || {}).length > 0 && (
-                      <span className="muted petit-texte">
-                        {Object.entries(h.modifications).map(([k, m]) => `${LIBELLES[k] || k} : ${m.avant ?? "vide"} → ${m.apres ?? "vide"}`).join(" ; ")}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            ) : <p className="muted" style={{ margin: 0 }}>Aucun mouvement enregistré.</p>}
+          <Panneau icone="historique" titre={`Chronologie (${evenements.length})`}>
+            <Chronologie evenements={evenements} moi={moi} onConstat={onConstat} onOuvrirDecharge={onOuvrirDecharge} />
+            {peutModifier && <button className="btn plein" onClick={() => setMouvement(true)}>Enregistrer un mouvement</button>}
           </Panneau>
         </div>
       </div>
@@ -201,8 +201,13 @@ export default function FicheEquipement({ equipement: e, equipements, versionRel
           onFait={async () => { setClasser(false); await onConstat("Classement enregistré"); }} />
       )}
 
-      {reattribuer && (
-        <FormReattribution equipement={e} equipements={equipements} depuis={attributions.find(a => a.enCours)?.du}
+      {mouvement && (
+        <FormMouvement equipement={e} equipements={equipements} onEnregistrer={enregistrerMouvement}
+          onReattribuer={motif => { setMouvement(false); setReattribuer(motif); }} onFermer={() => setMouvement(false)} />
+      )}
+
+      {reattribuer !== false && (
+        <FormReattribution equipement={e} equipements={equipements} depuis={attributions.find(a => a.enCours)?.du} motifInitial={reattribuer}
           onEnregistrer={enregistrerAttribution} onFermer={() => setReattribuer(false)} />
       )}
 
