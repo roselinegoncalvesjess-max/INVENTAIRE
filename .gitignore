@@ -1,0 +1,16 @@
+# Réglages personnels des éditeurs
+.vscode/
+.idea/
+*.swp
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Journaux
+*.log
+npm-debug.log*
+
+# Fichiers verrous temporaires d'Excel / Office
+~$*
