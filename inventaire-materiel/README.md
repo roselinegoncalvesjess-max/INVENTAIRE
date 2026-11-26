@@ -166,7 +166,7 @@ prévoir HTTPS (certificat) ou un hébergement dédié.
 ## Hébergement sur un VPS (Docker + Nginx + HTTPS)
 
 Prérequis : VPS Ubuntu/Debian avec Docker (plugin `docker compose`), Nginx et un nom de domaine dont
-l'enregistrement DNS (A/AAAA) pointe vers l'IP du VPS. Dans la suite, remplacer `parc.example.fr`.
+l'enregistrement DNS (A/AAAA) pointe vers l'IP du VPS. Domaine : `inventaire.rsekoua.org`.
 
 Schéma : Internet → Nginx (443, HTTPS) → `127.0.0.1:3001` (conteneur **app**) → conteneur **db**.
 Le port 3001 n'est jamais exposé publiquement (`ADRESSE_APP=127.0.0.1`), ce qui compte car un port
@@ -174,10 +174,30 @@ publié par Docker contourne le pare-feu UFW.
 
 ### Première installation
 
+Le dépôt GitHub est privé : le VPS y accède par une **clé de déploiement** (lecture seule, ce dépôt
+uniquement). Sur le VPS :
+
 ```bash
-# 1. Code (le VPS doit avoir accès au dépôt GitHub : clé de déploiement SSH si le dépôt est privé)
+ssh-keygen -t ed25519 -C "vps-parc-it" -f ~/.ssh/parc_it_deploy -N ""
+cat ~/.ssh/parc_it_deploy.pub
+```
+
+Le propriétaire du dépôt ajoute cette clé dans GitHub, **Settings › Deploy keys** (sans « Allow write
+access »). Puis, sur le VPS :
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/parc_it_deploy
+  IdentitiesOnly yes
+EOF
+ssh -T git@github.com    # doit répondre « successfully authenticated »
+```
+
+```bash
+# 1. Code
 sudo mkdir -p /opt/parc-it && sudo chown "$USER" /opt/parc-it
-git clone https://github.com/roselinegoncalvesjess-max/INVENTAIRE.git /opt/parc-it
+git clone git@github.com:roselinegoncalvesjess-max/INVENTAIRE.git /opt/parc-it
 cd /opt/parc-it/inventaire-materiel
 
 # 2. Configuration
@@ -191,10 +211,9 @@ docker compose exec app node src/creer-admin.js   # premier administrateur
 
 # 4. Nginx + certificat
 sudo cp deploiement/nginx-parc-it.conf /etc/nginx/sites-available/parc-it
-sudo sed -i "s/parc.example.fr/VOTRE-DOMAINE/" /etc/nginx/sites-available/parc-it
 sudo ln -s /etc/nginx/sites-available/parc-it /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d VOTRE-DOMAINE              # HTTPS + redirection automatique
+sudo certbot --nginx -d inventaire.rsekoua.org              # HTTPS + redirection automatique
 ```
 
 Pare-feu : seuls SSH, 80 et 443 doivent être ouverts (`sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full'`).
